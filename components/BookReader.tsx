@@ -3,7 +3,7 @@ import { Document } from 'react-pdf';
 import { 
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   Sparkles, AlertCircle, Maximize, X,
-  Menu, Book as BookIcon, Upload, Link as LinkIcon, FileText
+  Menu, Book as BookIcon, Upload, Columns, File
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
@@ -30,6 +30,9 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [currentPageText, setCurrentPageText] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   
+  // View Mode: 'single' (trang đơn) hoặc 'book' (2 trang/sách)
+  const [viewMode, setViewMode] = useState<'single' | 'book'>('single');
+  
   // Layout State
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +46,15 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const activeChapter = book.chapters.find(c => c.id === activeChapterId);
+
+  // Tự động chuyển sang Book Mode trên màn hình lớn
+  useEffect(() => {
+    if (containerSize && containerSize.width > 1200) { // Tăng ngưỡng auto switch lên 1 chút
+      setViewMode('book');
+    } else {
+      setViewMode('single');
+    }
+  }, [containerSize?.width]); 
 
   // --- RESIZE HANDLER ---
   useEffect(() => {
@@ -72,7 +84,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pageNumber, numPages, isPresentationMode]);
+  }, [pageNumber, numPages, isPresentationMode, viewMode]);
 
   // --- PDF HANDLERS ---
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -88,21 +100,43 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   // --- NAVIGATION CONTROLS ---
   const handleNext = () => {
-    if (pageNumber < numPages) {
-      const nextPage = pageNumber + 1;
-      setPageNumber(nextPage);
-      extractPageText(nextPage);
-      scrollToTop();
+    if (pageNumber >= numPages) return;
+
+    if (viewMode === 'book') {
+       // Logic trang sách: 
+       // Trang 1 (Bìa) -> Next -> Trang 2 (Trái) & 3 (Phải)
+       // Trang 2 -> Next -> Trang 4 (Trái) & 5 (Phải)
+       let next = pageNumber;
+       if (pageNumber === 1) next = 2;
+       else next = pageNumber + 2;
+
+       if (next > numPages) return;
+       setPageNumber(next);
+       extractPageText(next);
+    } else {
+       // Logic đơn
+       setPageNumber(prev => prev + 1);
+       extractPageText(pageNumber + 1);
     }
+    scrollToTop();
   };
 
   const handlePrev = () => {
-    if (pageNumber > 1) {
-      const prevPage = pageNumber - 1;
-      setPageNumber(prevPage);
-      extractPageText(prevPage);
-      scrollToTop();
+    if (pageNumber <= 1) return;
+
+    if (viewMode === 'book') {
+        let prev = pageNumber;
+        if (pageNumber === 2) prev = 1;
+        else prev = pageNumber - 2;
+        
+        if (prev < 1) prev = 1;
+        setPageNumber(prev);
+        extractPageText(prev);
+    } else {
+        setPageNumber(prev => prev - 1);
+        extractPageText(pageNumber - 1);
     }
+    scrollToTop();
   };
 
   const scrollToTop = () => {
@@ -147,7 +181,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     if (!isPresentationMode) {
       setIsPresentationMode(true);
       setIsSidebarOpen(false);
-      setScale(1.0); // Reset scale khi vào presentation
+      setScale(1.0); 
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(console.error);
       }
@@ -175,32 +209,35 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   // --- DIMENSION CALCULATION ---
   const getPageDimensions = () => {
-    if (!containerSize) return { width: 800 };
+    if (!containerSize) return { width: 600 };
     
-    // 1. CHẾ ĐỘ TOÀN MÀN HÌNH (PRESENTATION)
-    if (isPresentationMode) {
-      // Ưu tiên fit theo chiều cao màn hình để không bị mất chữ
-      // Trừ đi một chút padding nhỏ (20px) để không dính sát mép trên dưới
-      return { 
-        height: containerSize.height - 20, 
-        width: undefined // Để undefined để react-pdf tự tính width theo tỷ lệ
-      };
+    const padding = isPresentationMode ? 20 : 40;
+    const availableWidth = containerSize.width - padding;
+    const availableHeight = containerSize.height - padding;
+
+    if (viewMode === 'book' && pageNumber !== 1) {
+        // Book Mode (2 pages)
+        // Cần fit 2 trang vào chiều ngang
+        const targetWidthPerPage = (availableWidth / 2) * 0.95; // 95% width to leave gap
+        // Giới hạn max width để sách không quá to
+        const maxWidth = 800; // Tăng từ 600 lên 800 để sách to hơn trên màn hình lớn
+        
+        return {
+            width: Math.min(targetWidthPerPage * scale, maxWidth),
+            height: undefined
+        };
     }
 
-    // 2. CHẾ ĐỘ THƯỜNG (NORMAL)
-    const padding = 40; 
-    const availableWidth = containerSize.width - padding;
+    // Single Page Mode or Cover Page
+    if (isPresentationMode) {
+       return { height: availableHeight * scale, width: undefined };
+    }
     
-    // Tăng tỷ lệ lên 0.8 (80%) theo yêu cầu
-    const scaleFactor = 0.8; 
-    const targetWidth = availableWidth * scaleFactor;
-    
-    // Giới hạn max width xuống 800px cho gọn
-    const MAX_READING_WIDTH = 800; 
-    
+    // Normal View (Single)
     return {
-      width: Math.min(targetWidth, MAX_READING_WIDTH),
-      height: undefined
+       // Tăng tỷ lệ chiều rộng lên 85% (0.85) và max-width lên 1200px
+       width: Math.min(availableWidth * 0.85 * scale, 1200), 
+       height: undefined
     };
   };
 
@@ -270,10 +307,33 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 
                 <div className="flex items-center gap-2 bg-[#2d2d2d] px-2 py-1 rounded-lg">
                     <button onClick={handlePrev} disabled={pageNumber <= 1} className="p-1 text-gray-400 hover:text-white disabled:opacity-30"><ChevronLeft size={18} /></button>
-                    <span className="text-sm text-gray-300 w-20 text-center font-mono">{pageNumber} / {numPages || '--'}</span>
+                    <span className="text-sm text-gray-300 w-24 text-center font-mono">
+                        {viewMode === 'book' && pageNumber !== 1 
+                            ? `${pageNumber}-${Math.min(pageNumber+1, numPages)} / ${numPages}` 
+                            : `${pageNumber} / ${numPages}`
+                        }
+                    </span>
                     <button onClick={handleNext} disabled={pageNumber >= numPages} className="p-1 text-gray-400 hover:text-white disabled:opacity-30"><ChevronRight size={18} /></button>
                 </div>
                 
+                {/* View Mode Toggle */}
+                <div className="hidden md:flex bg-[#2d2d2d] rounded-lg p-0.5 ml-2">
+                    <button 
+                        onClick={() => setViewMode('single')}
+                        className={`p-1.5 rounded-md transition-all ${viewMode === 'single' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                        title="Trang đơn"
+                    >
+                        <File size={16} />
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('book')}
+                        className={`p-1.5 rounded-md transition-all ${viewMode === 'book' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                        title="Chế độ sách (2 trang)"
+                    >
+                        <Columns size={16} />
+                    </button>
+                </div>
+
                 <div className="flex items-center gap-1 bg-[#2d2d2d] px-2 py-1 rounded-lg ml-2">
                     <button onClick={handleZoomOut} className="p-1 text-gray-400 hover:text-white"><ZoomOut size={16} /></button>
                     <span className="text-xs text-gray-400 w-12 text-center">{Math.round(scale * 100)}%</span>
@@ -292,9 +352,8 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         )}
 
         {/* READER CONTAINER */}
-        <div ref={containerRef} className={`flex-1 overflow-y-auto overflow-x-hidden relative ${isPresentationMode ? 'bg-black' : 'bg-[#525659]'} custom-scrollbar`}>
+        <div ref={containerRef} className={`flex-1 overflow-y-auto overflow-x-hidden relative ${isPresentationMode ? 'bg-black' : 'bg-[#333]'} custom-scrollbar`}>
             
-            {/* Inner Wrapper: Trong presentation mode, giảm padding để tối ưu không gian */}
             <div className={`min-h-full w-full flex items-center justify-center ${isPresentationMode ? 'p-1' : 'p-4 md:p-8'}`}>
                 
                 {numPages === 0 && (
@@ -312,15 +371,53 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                     inputRef={documentRef}
                     className="flex justify-center" 
                 >
-                    {/* Standard Page Rendering */}
-                    {numPages > 0 && containerSize && (
-                        <PDFPage 
-                            pageNumber={pageNumber}
-                            width={pageWidth}
-                            height={pageHeight} // Truyền height nếu có (cho chế độ presentation)
-                            scale={scale}
-                            isPresentation={isPresentationMode}
-                        />
+                    {/* LOGIC HIỂN THỊ */}
+                    
+                    {/* 1. VIEW SÁCH (2 TRANG) */}
+                    {viewMode === 'book' && pageNumber !== 1 && numPages > 0 && containerSize ? (
+                        <div className="flex shadow-2xl rounded-sm overflow-hidden bg-[#e0e0e0] border border-gray-700 relative">
+                            {/* Trang Trái */}
+                            <div className="relative border-r border-gray-400/30 bg-white">
+                                <PDFPage 
+                                    pageNumber={pageNumber} 
+                                    width={pageWidth} 
+                                    scale={scale} 
+                                    isPresentation={isPresentationMode} 
+                                />
+                                {/* Hiệu ứng gáy sách trái */}
+                                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-black/20 to-transparent pointer-events-none mix-blend-multiply"></div>
+                            </div>
+                            
+                            {/* Trang Phải (nếu có) */}
+                            {pageNumber + 1 <= numPages ? (
+                                <div className="relative bg-white">
+                                    <PDFPage 
+                                        pageNumber={pageNumber + 1} 
+                                        width={pageWidth} 
+                                        scale={scale} 
+                                        isPresentation={isPresentationMode} 
+                                    />
+                                    {/* Hiệu ứng gáy sách phải */}
+                                    <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none mix-blend-multiply"></div>
+                                </div>
+                            ) : (
+                                /* Trang trắng (cuối sách) */
+                                <div className="bg-[#f0f0f0]" style={{ width: pageWidth, height: pageHeight || (pageWidth * 1.414) }}></div>
+                            )}
+                        </div>
+                    ) : (
+                        /* 2. VIEW ĐƠN HOẶC TRANG BÌA */
+                        numPages > 0 && containerSize && (
+                            <div className={pageNumber === 1 && viewMode === 'book' ? "shadow-2xl" : ""}>
+                                <PDFPage 
+                                    pageNumber={pageNumber}
+                                    width={pageWidth}
+                                    height={pageHeight}
+                                    scale={scale}
+                                    isPresentation={isPresentationMode}
+                                />
+                            </div>
+                        )
                     )}
                 </Document>
             </div>
