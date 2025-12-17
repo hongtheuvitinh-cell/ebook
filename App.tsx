@@ -3,14 +3,15 @@ import { Book, Category } from './types';
 import BookReader from './components/BookReader';
 import Library from './components/Library';
 import AdminDashboard from './components/AdminDashboard';
-import { ShieldCheck, User, LogOut, Loader2 } from 'lucide-react';
-import { supabase } from './services/supabaseClient';
+import { ShieldCheck, User, LogOut, Loader2, AlertTriangle } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
 const App: React.FC = () => {
   // --- STATE ---
   const [categories, setCategories] = useState<Category[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // view: 'library' | 'reader' | 'admin'
   const [currentView, setCurrentView] = useState<'library' | 'reader' | 'admin'>('library');
@@ -19,6 +20,15 @@ const App: React.FC = () => {
   // --- FETCH DATA FROM SUPABASE ---
   const fetchData = async () => {
     setIsLoading(true);
+    setConnectionError(null);
+
+    // Kiểm tra cấu hình trước khi gọi mạng
+    if (!isSupabaseConfigured) {
+      setIsLoading(false);
+      setConnectionError("Chưa cấu hình kết nối Database. Vui lòng thêm VITE_SUPABASE_URL và VITE_SUPABASE_ANON_KEY vào biến môi trường.");
+      return;
+    }
+
     try {
       // 1. Fetch Categories
       const { data: catData, error: catError } = await supabase
@@ -67,9 +77,9 @@ const App: React.FC = () => {
       }));
       setBooks(mappedBooks);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching data:", error);
-      alert("Không thể tải dữ liệu từ máy chủ.");
+      setConnectionError(error.message || "Không thể tải dữ liệu từ máy chủ.");
     } finally {
       setIsLoading(false);
     }
@@ -90,16 +100,38 @@ const App: React.FC = () => {
     setCurrentView('library');
   };
 
-  // --- RENDER ---
+  // --- RENDER: LOADING ---
   if (isLoading) {
     return (
       <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col items-center justify-center text-white gap-4">
         <Loader2 size={48} className="animate-spin text-indigo-500" />
-        <p className="text-gray-400">Đang tải thư viện sách...</p>
+        <p className="text-gray-400">Đang kết nối Database...</p>
       </div>
     );
   }
 
+  // --- RENDER: ERROR STATE ---
+  if (connectionError) {
+    return (
+      <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col items-center justify-center text-white p-6">
+        <div className="bg-gray-800 p-8 rounded-xl border border-red-500/50 max-w-lg w-full text-center shadow-2xl">
+           <AlertTriangle size={64} className="mx-auto text-red-500 mb-6" />
+           <h2 className="text-2xl font-bold mb-4 text-red-400">Lỗi Kết Nối</h2>
+           <p className="text-gray-300 mb-6 leading-relaxed">
+             {connectionError}
+           </p>
+           <button 
+             onClick={fetchData}
+             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+           >
+             Thử lại
+           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDER: MAIN APP ---
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#1a1a1a] text-white font-sans flex flex-col">
       
