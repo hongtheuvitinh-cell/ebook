@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Book, Category } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Book as BookIcon, List, FileText, X, FolderPlus, Folder, Layers } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
+import { Plus, Trash2, Eye, EyeOff, Book as BookIcon, List, FileText, X, FolderPlus, Folder, Layers, Loader2 } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface AdminDashboardProps {
   books: Book[];
   setBooks: React.Dispatch<React.SetStateAction<Book[]>>;
   categories: Category[];
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
+  onRefresh: () => void; // Trigger reload data in App
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, categories, setCategories }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, categories, setCategories, onRefresh }) => {
   const [activeTab, setActiveTab] = useState<'books' | 'categories'>('books');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // --- BOOK STATE ---
   const [newBook, setNewBook] = useState({ title: '', author: '', url: '', categoryId: '' });
@@ -21,92 +23,131 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   // --- CATEGORY STATE ---
   const [newCategory, setNewCategory] = useState({ name: '', description: '', parentId: '' });
 
-  // ================= BOOK HANDLERS =================
+  // ================= BOOK HANDLERS (SUPABASE) =================
 
-  const handleAddBook = (e: React.FormEvent) => {
+  const handleAddBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBook.title || !newBook.url) return;
+    setIsProcessing(true);
 
-    const book: Book = {
-      id: uuidv4(),
-      title: newBook.title,
-      author: newBook.author || 'Chưa rõ',
-      url: newBook.url,
-      categoryId: newBook.categoryId || undefined,
-      uploadDate: new Date().toISOString(),
-      chapters: [],
-      isVisible: true
-    };
+    try {
+      const { error } = await supabase.from('books').insert({
+        title: newBook.title,
+        author: newBook.author || 'Chưa rõ',
+        url: newBook.url,
+        category_id: newBook.categoryId || null,
+        is_visible: true
+      });
 
-    setBooks([...books, book]);
-    setNewBook({ title: '', author: '', url: '', categoryId: '' });
-  };
-
-  const toggleVisibility = (id: string) => {
-    setBooks(books.map(b => b.id === id ? { ...b, isVisible: !b.isVisible } : b));
-  };
-
-  const deleteBook = (id: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa cuốn sách này không?")) {
-      setBooks(books.filter(b => b.id !== id));
+      if (error) throw error;
+      
+      setNewBook({ title: '', author: '', url: '', categoryId: '' });
+      onRefresh(); // Reload data
+    } catch (err: any) {
+      alert("Lỗi thêm sách: " + err.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleAddChapter = (bookId: string) => {
+  const toggleVisibility = async (book: Book) => {
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('books')
+        .update({ is_visible: !book.isVisible })
+        .eq('id', book.id);
+
+      if (error) throw error;
+      
+      // Optimistic Update (Cập nhật giao diện ngay lập tức cho mượt)
+      setBooks(books.map(b => b.id === book.id ? { ...b, isVisible: !b.isVisible } : b));
+    } catch (err: any) {
+      alert("Lỗi cập nhật: " + err.message);
+      onRefresh(); // Revert on error
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const deleteBook = async (id: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa cuốn sách này không?")) return;
+    setIsProcessing(true);
+
+    try {
+      const { error } = await supabase.from('books').delete().eq('id', id);
+      if (error) throw error;
+      
+      setBooks(books.filter(b => b.id !== id)); // Optimistic UI
+    } catch (err: any) {
+      alert("Lỗi xóa sách: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAddChapter = async (bookId: string) => {
     if (!newChapter.title) return;
+    setIsProcessing(true);
 
-    setBooks(books.map(b => {
-      if (b.id === bookId) {
-        return {
-          ...b,
-          chapters: [
-            ...b.chapters,
-            {
-              id: uuidv4(),
-              title: newChapter.title,
-              pageNumber: Number(newChapter.pageNumber) || 1,
-              url: newChapter.url.trim() !== '' ? newChapter.url.trim() : undefined 
-            }
-          ]
-        };
-      }
-      return b;
-    }));
+    try {
+      const { error } = await supabase.from('chapters').insert({
+        book_id: bookId,
+        title: newChapter.title,
+        page_number: Number(newChapter.pageNumber) || 1,
+        url: newChapter.url.trim() !== '' ? newChapter.url.trim() : null
+      });
 
-    setNewChapter({ title: '', pageNumber: 1, url: '' });
+      if (error) throw error;
+
+      setNewChapter({ title: '', pageNumber: 1, url: '' });
+      onRefresh(); // Cần reload để lấy ID mới của chapter
+    } catch (err: any) {
+      alert("Lỗi thêm chương: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const deleteChapter = (bookId: string, chapterId: string) => {
-    setBooks(books.map(b => {
-      if (b.id === bookId) {
-        return {
-          ...b,
-          chapters: b.chapters.filter(c => c.id !== chapterId)
-        };
-      }
-      return b;
-    }));
+  const deleteChapter = async (chapterId: string) => {
+    if (!window.confirm("Xóa chương này?")) return;
+    setIsProcessing(true);
+    try {
+       const { error } = await supabase.from('chapters').delete().eq('id', chapterId);
+       if (error) throw error;
+       onRefresh();
+    } catch (err: any) {
+       alert("Lỗi xóa chương: " + err.message);
+    } finally {
+       setIsProcessing(false);
+    }
   };
 
-  // ================= CATEGORY HANDLERS =================
+  // ================= CATEGORY HANDLERS (SUPABASE) =================
 
-  const handleAddCategory = (e: React.FormEvent) => {
+  const handleAddCategory = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newCategory.name) return;
+      setIsProcessing(true);
 
-      const cat: Category = {
-          id: uuidv4(),
-          name: newCategory.name,
-          description: newCategory.description,
-          parentId: newCategory.parentId || undefined
-      };
+      try {
+        const { error } = await supabase.from('categories').insert({
+            name: newCategory.name,
+            description: newCategory.description,
+            parent_id: newCategory.parentId || null
+        });
 
-      setCategories([...categories, cat]);
-      setNewCategory({ name: '', description: '', parentId: '' });
+        if (error) throw error;
+        setNewCategory({ name: '', description: '', parentId: '' });
+        onRefresh();
+      } catch (err: any) {
+        alert("Lỗi thêm danh mục: " + err.message);
+      } finally {
+        setIsProcessing(false);
+      }
   };
 
-  const handleDeleteCategory = (id: string) => {
-      // Cảnh báo nếu danh mục có con
+  const handleDeleteCategory = async (id: string) => {
       const hasChildren = categories.some(c => c.parentId === id);
       const hasBooks = books.some(b => b.categoryId === id);
 
@@ -117,10 +158,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
       } else {
           if (!window.confirm("Xóa danh mục này?")) return;
       }
-
-      setCategories(categories.filter(c => c.id !== id));
-      // Cập nhật sách thuộc danh mục này về null
-      setBooks(books.map(b => b.categoryId === id ? { ...b, categoryId: undefined } : b));
+      
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase.from('categories').delete().eq('id', id);
+          if (error) throw error;
+          onRefresh(); // Refresh để update lại danh sách sách (mất category)
+      } catch (err: any) {
+          alert("Lỗi xóa: " + err.message);
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const getParentName = (parentId?: string) => {
@@ -140,18 +188,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
         <div className="flex bg-gray-800 p-1 rounded-lg">
             <button 
                 onClick={() => setActiveTab('books')}
+                disabled={isProcessing}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'books' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
             >
                 <BookIcon size={16} /> Quản Lý Sách
             </button>
             <button 
                 onClick={() => setActiveTab('categories')}
+                disabled={isProcessing}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'categories' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
             >
                 <Layers size={16} /> Quản Lý Danh Mục
             </button>
         </div>
       </div>
+
+      {isProcessing && (
+         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+             <div className="bg-gray-800 p-4 rounded-lg flex items-center gap-3 shadow-xl border border-gray-700">
+                 <Loader2 className="animate-spin text-indigo-500" />
+                 <span>Đang xử lý dữ liệu...</span>
+             </div>
+         </div>
+      )}
 
       {/* ================= TAB: BOOKS ================= */}
       {activeTab === 'books' && (
@@ -194,21 +253,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
 
                 <input
                     type="text"
-                    placeholder="URL File Gốc (Bắt buộc)"
+                    placeholder="URL File PDF (Bắt buộc)"
                     value={newBook.url}
                     onChange={e => setNewBook({...newBook, url: e.target.value})}
                     className="bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:border-indigo-500 outline-none"
                     required
                 />
-                <button type="submit" className="md:col-span-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg p-3 transition-colors flex justify-center items-center gap-2">
+                <button type="submit" disabled={isProcessing} className="md:col-span-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg p-3 transition-colors flex justify-center items-center gap-2 disabled:opacity-50">
                     <Plus size={18} /> Thêm vào kho
                 </button>
                 </form>
             </div>
 
             {/* Danh sách sách */}
-            <h2 className="text-xl font-semibold mb-4">Danh sách sách trong hệ thống</h2>
+            <h2 className="text-xl font-semibold mb-4">Danh sách sách trong Database</h2>
             <div className="space-y-4">
+                {books.length === 0 && <p className="text-gray-500 italic">Chưa có sách nào.</p>}
                 {books.map(book => (
                 <div key={book.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
                     <div className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gray-900/50">
@@ -231,7 +291,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
 
                         <div className="flex items-center gap-2">
                             <button 
-                                onClick={() => toggleVisibility(book.id)}
+                                onClick={() => toggleVisibility(book)}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                                 book.isVisible 
                                     ? 'bg-green-900/30 text-green-400 border-green-700 hover:bg-green-900/50' 
@@ -273,11 +333,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                                         <div className="flex-1">
                                             <div className="font-medium text-sm text-gray-200">{chapter.title}</div>
                                             <div className="text-xs text-gray-500">
-                                                {chapter.url ? <span className="text-green-400">Link riêng: ...{chapter.url.slice(-20)}</span> : 'Dùng file gốc'} 
+                                                {chapter.url ? <span className="text-green-400">Link riêng</span> : 'Dùng file gốc'} 
                                                 {' • '} Trang bắt đầu: {chapter.pageNumber}
                                             </div>
                                         </div>
-                                        <button onClick={() => deleteChapter(book.id, chapter.id)} className="text-gray-500 hover:text-red-400 p-1">
+                                        <button onClick={() => deleteChapter(chapter.id)} className="text-gray-500 hover:text-red-400 p-1">
                                             <X size={16} />
                                         </button>
                                     </div>
@@ -323,9 +383,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                                         </button>
                                     </div>
                                 </div>
-                                <p className="text-[10px] text-gray-500 mt-1">
-                                    * Nếu điền "URL PDF", mục này sẽ mở file mới. Nếu để trống, mục này sẽ nhảy đến số trang trong file gốc.
-                                </p>
                             </div>
                         </div>
                     )}
@@ -371,7 +428,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                         className="bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:border-indigo-500 outline-none"
                     />
 
-                    <button type="submit" className="md:col-span-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg p-3 transition-colors flex justify-center items-center gap-2">
+                    <button type="submit" disabled={isProcessing} className="md:col-span-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg p-3 transition-colors flex justify-center items-center gap-2 disabled:opacity-50">
                         <Plus size={18} /> Tạo danh mục
                     </button>
                 </form>
