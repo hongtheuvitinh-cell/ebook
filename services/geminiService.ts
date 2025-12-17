@@ -1,11 +1,35 @@
 import { GoogleGenAI, GenerateContentResponse, Tool } from "@google/genai";
 
+// Helper to safely get env vars without crashing during build/runtime
+const getApiKey = (): string => {
+  try {
+    // 1. Ưu tiên Vite (import.meta.env)
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.API_KEY) {
+      // @ts-ignore
+      return import.meta.env.API_KEY;
+    }
+    
+    // 2. Fallback sang process.env (cho môi trường Node/CRA cũ)
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      // @ts-ignore
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // ignore errors
+  }
+  return '';
+};
+
 // Ensure API Key is available
-const apiKey = process.env.API_KEY || '';
+const apiKey = getApiKey();
+
 if (!apiKey) {
-  console.warn("API_KEY is not defined in process.env");
+  console.warn("API_KEY is not defined. Please check your environment variables.");
 }
 
+// Khởi tạo AI với key an toàn (nếu rỗng thì sẽ báo lỗi khi gọi hàm, nhưng không crash app lúc khởi động)
 const ai = new GoogleGenAI({ apiKey });
 
 export const analyzeText = async (
@@ -13,6 +37,8 @@ export const analyzeText = async (
   prompt: string, 
   modelName: string = 'gemini-2.5-flash'
 ): Promise<string> => {
+  if (!apiKey) return "API Key is missing. Please configure API_KEY in your environment variables.";
+
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: modelName,
@@ -33,6 +59,8 @@ export const chatWithBook = async (
   message: string,
   context: string
 ): Promise<string> => {
+  if (!apiKey) return "API Key is missing.";
+
   try {
     const chat = ai.chats.create({
       model: 'gemini-2.5-flash',
@@ -72,6 +100,8 @@ export const analyzeNotebookSources = async (
   userPrompt: string,
   history: { role: string; parts: { text: string }[] }[] = []
 ): Promise<string> => {
+  if (!apiKey) return "API Key is missing.";
+
   try {
     // 1. Prepare Sources Context
     let sourceContext = "Here are the external sources provided by the user for analysis:\n\n";
