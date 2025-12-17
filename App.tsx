@@ -3,6 +3,7 @@ import { Book, Category } from './types';
 import BookReader from './components/BookReader';
 import Library from './components/Library';
 import AdminDashboard from './components/AdminDashboard';
+import AdminLogin from './components/AdminLogin';
 import { ShieldCheck, User, LogOut, Loader2, AlertTriangle } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
@@ -13,16 +14,37 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
+  // Auth State (Real Supabase Session)
+  const [session, setSession] = useState<any>(null);
+
   // view: 'library' | 'reader' | 'admin'
   const [currentView, setCurrentView] = useState<'library' | 'reader' | 'admin'>('library');
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-  // --- FETCH DATA FROM SUPABASE ---
+  // --- INITIALIZE & FETCH DATA ---
+  useEffect(() => {
+    // 1. Check Auth Session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    // 2. Listen for Auth Changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    // 3. Fetch Data
+    fetchData();
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const fetchData = async () => {
     setIsLoading(true);
     setConnectionError(null);
 
-    // Kiểm tra cấu hình trước khi gọi mạng
     if (!isSupabaseConfigured) {
       setIsLoading(false);
       setConnectionError("Chưa cấu hình kết nối Database. Vui lòng thêm VITE_SUPABASE_URL và VITE_SUPABASE_ANON_KEY vào biến môi trường.");
@@ -30,7 +52,7 @@ const App: React.FC = () => {
     }
 
     try {
-      // 1. Fetch Categories
+      // Fetch Categories
       const { data: catData, error: catError } = await supabase
         .from('categories')
         .select('*')
@@ -42,19 +64,14 @@ const App: React.FC = () => {
         id: c.id,
         name: c.name,
         description: c.description,
-        parentId: c.parent_id // Map snake_case from DB to camelCase
+        parentId: c.parent_id
       }));
       setCategories(mappedCats);
 
-      // 2. Fetch Books with Chapters
+      // Fetch Books
       const { data: bookData, error: bookError } = await supabase
         .from('books')
-        .select(`
-          *,
-          chapters (
-            id, title, page_number, url
-          )
-        `)
+        .select(`*, chapters (id, title, page_number, url)`)
         .order('upload_date', { ascending: false });
 
       if (bookError) throw bookError;
@@ -65,7 +82,7 @@ const App: React.FC = () => {
         author: b.author,
         url: b.url,
         coverUrl: b.cover_url,
-        categoryId: b.category_id, // Map snake_case
+        categoryId: b.category_id,
         uploadDate: b.upload_date,
         isVisible: b.is_visible,
         chapters: (b.chapters || []).map((ch: any) => ({
@@ -73,7 +90,7 @@ const App: React.FC = () => {
           title: ch.title,
           pageNumber: ch.page_number,
           url: ch.url
-        })).sort((a: any, b: any) => a.pageNumber - b.pageNumber) // Sort chapters by page
+        })).sort((a: any, b: any) => a.pageNumber - b.pageNumber)
       }));
       setBooks(mappedBooks);
 
@@ -84,10 +101,6 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   // --- HANDLERS ---
   const handleSelectBook = (book: Book) => {
@@ -100,12 +113,18 @@ const App: React.FC = () => {
     setCurrentView('library');
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentView('library');
+  };
+
   // --- RENDER: LOADING ---
-  if (isLoading) {
+  if (isLoading && !session && !connectionError) {
+    // Chỉ hiện loading full screen khi chưa có dữ liệu lần đầu
     return (
       <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col items-center justify-center text-white gap-4">
         <Loader2 size={48} className="animate-spin text-indigo-500" />
-        <p className="text-gray-400">Đang kết nối Database...</p>
+        <p className="text-gray-400">Đang tải thư viện...</p>
       </div>
     );
   }
@@ -117,13 +136,8 @@ const App: React.FC = () => {
         <div className="bg-gray-800 p-8 rounded-xl border border-red-500/50 max-w-lg w-full text-center shadow-2xl">
            <AlertTriangle size={64} className="mx-auto text-red-500 mb-6" />
            <h2 className="text-2xl font-bold mb-4 text-red-400">Lỗi Kết Nối</h2>
-           <p className="text-gray-300 mb-6 leading-relaxed">
-             {connectionError}
-           </p>
-           <button 
-             onClick={fetchData}
-             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
-           >
+           <p className="text-gray-300 mb-6 leading-relaxed">{connectionError}</p>
+           <button onClick={fetchData} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
              Thử lại
            </button>
         </div>
@@ -135,10 +149,10 @@ const App: React.FC = () => {
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#1a1a1a] text-white font-sans flex flex-col">
       
-      {/* 1. THANH ĐIỀU HƯỚNG (HEADER) */}
+      {/* 1. HEADER */}
       {currentView !== 'reader' && (
         <nav className="h-16 border-b border-gray-800 bg-[#252525] flex items-center justify-between px-6 shrink-0">
-            <div className="flex items-center gap-2 font-bold text-xl tracking-wide">
+            <div className="flex items-center gap-2 font-bold text-xl tracking-wide cursor-pointer" onClick={() => setCurrentView('library')}>
                 <span className="text-indigo-500">Gemini</span>
                 <span>E-Book</span>
             </div>
@@ -151,34 +165,50 @@ const App: React.FC = () => {
                     <User size={16} />
                     <span>Người đọc</span>
                 </button>
+                
                 <button
                     onClick={() => setCurrentView('admin')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${currentView === 'admin' ? 'bg-indigo-900/50 text-indigo-300 border border-indigo-500/30' : 'text-gray-400 hover:text-white'}`}
                 >
                     <ShieldCheck size={16} />
-                    <span>Quản trị (Admin)</span>
+                    <span>Quản trị</span>
                 </button>
+
+                {/* Nút Logout (chỉ hiện khi có session) */}
+                {session && (
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-red-900/20 text-red-400 border border-red-500/20 hover:bg-red-900/40 hover:text-red-300 transition-colors ml-2"
+                        title={`Đăng xuất (${session.user.email})`}
+                    >
+                        <LogOut size={16} />
+                    </button>
+                )}
             </div>
         </nav>
       )}
 
-      {/* 2. NỘI DUNG CHÍNH */}
+      {/* 2. MAIN CONTENT */}
       <main className="flex-1 overflow-hidden relative">
         
-        {/* VIEW: ADMIN DASHBOARD */}
+        {/* ADMIN VIEW */}
         {currentView === 'admin' && (
             <div className="h-full overflow-y-auto custom-scrollbar">
-                <AdminDashboard 
-                    books={books} 
-                    setBooks={setBooks} 
-                    categories={categories}
-                    setCategories={setCategories}
-                    onRefresh={fetchData} // Pass refresh trigger
-                />
+                {session ? (
+                    <AdminDashboard 
+                        books={books} 
+                        setBooks={setBooks} 
+                        categories={categories}
+                        setCategories={setCategories}
+                        onRefresh={fetchData}
+                    />
+                ) : (
+                    <AdminLogin /> // Không cần props onLoginSuccess nữa, App tự detect session
+                )}
             </div>
         )}
 
-        {/* VIEW: USER LIBRARY */}
+        {/* LIBRARY VIEW */}
         {currentView === 'library' && (
             <div className="h-full overflow-y-auto custom-scrollbar">
                 <Library 
@@ -189,7 +219,7 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* VIEW: READER */}
+        {/* READER VIEW */}
         {currentView === 'reader' && selectedBook && (
             <div className="h-full w-full relative">
                 <button 
