@@ -153,7 +153,7 @@ const App: React.FC = () => {
       {currentView !== 'reader' && (
         <nav className="h-16 border-b border-gray-800 bg-[#252525] flex items-center justify-between px-6 shrink-0">
             <div className="flex items-center gap-2 font-bold text-xl tracking-wide cursor-pointer" onClick={() => setCurrentView('library')}>
-                <span className="text-indigo-500">Gemini</span>
+                <span className="text-indigo-500">Kho tàng tri thức</span>
                 <span>E-Book</span>
             </div>
 
