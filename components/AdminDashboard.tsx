@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Book, Category } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Book as BookIcon, List, FileText, X, FolderPlus, Folder, Layers, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Book as BookIcon, List, FileText, X, FolderPlus, Folder, Layers, Loader2, AlertTriangle, Terminal } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface AdminDashboardProps {
@@ -11,9 +11,43 @@ interface AdminDashboardProps {
   onRefresh: () => void; // Trigger reload data in App
 }
 
+// CẬP NHẬT SQL: Chia quyền rõ ràng (Public Read, Admin Write)
+const RLS_SQL_FIX = `
+-- COPY TOÀN BỘ đoạn này và chạy trong Supabase SQL Editor --
+
+-- 1. Bảng Categories
+alter table "public"."categories" enable row level security;
+-- Xóa policy cũ
+drop policy if exists "Enable all access for categories" on "public"."categories";
+drop policy if exists "Public Read Categories" on "public"."categories";
+drop policy if exists "Admin Write Categories" on "public"."categories";
+-- Tạo policy mới
+create policy "Public Read Categories" on "public"."categories" for select to public using (true);
+create policy "Admin Write Categories" on "public"."categories" for all to authenticated using (true) with check (true);
+
+-- 2. Bảng Books
+alter table "public"."books" enable row level security;
+drop policy if exists "Enable all access for books" on "public"."books";
+drop policy if exists "Public Read Books" on "public"."books";
+drop policy if exists "Admin Write Books" on "public"."books";
+create policy "Public Read Books" on "public"."books" for select to public using (true);
+create policy "Admin Write Books" on "public"."books" for all to authenticated using (true) with check (true);
+
+-- 3. Bảng Chapters
+alter table "public"."chapters" enable row level security;
+drop policy if exists "Enable all access for chapters" on "public"."chapters";
+drop policy if exists "Public Read Chapters" on "public"."chapters";
+drop policy if exists "Admin Write Chapters" on "public"."chapters";
+create policy "Public Read Chapters" on "public"."chapters" for select to public using (true);
+create policy "Admin Write Chapters" on "public"."chapters" for all to authenticated using (true) with check (true);
+`;
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, categories, setCategories, onRefresh }) => {
   const [activeTab, setActiveTab] = useState<'books' | 'categories'>('books');
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // State lỗi RLS
+  const [showRlsHelp, setShowRlsHelp] = useState(false);
 
   // --- BOOK STATE ---
   const [newBook, setNewBook] = useState({ title: '', author: '', url: '', categoryId: '' });
@@ -22,6 +56,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
 
   // --- CATEGORY STATE ---
   const [newCategory, setNewCategory] = useState({ name: '', description: '', parentId: '' });
+
+  // Helper handle error
+  const handleError = (err: any) => {
+      console.error(err);
+      if (err.message && (err.message.includes('row-level security') || err.code === '42501')) {
+          setShowRlsHelp(true);
+      } else {
+          alert("Lỗi: " + err.message);
+      }
+  };
 
   // ================= BOOK HANDLERS (SUPABASE) =================
 
@@ -44,7 +88,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
       setNewBook({ title: '', author: '', url: '', categoryId: '' });
       onRefresh(); // Reload data
     } catch (err: any) {
-      alert("Lỗi thêm sách: " + err.message);
+      handleError(err);
     } finally {
       setIsProcessing(false);
     }
@@ -63,7 +107,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
       // Optimistic Update (Cập nhật giao diện ngay lập tức cho mượt)
       setBooks(books.map(b => b.id === book.id ? { ...b, isVisible: !b.isVisible } : b));
     } catch (err: any) {
-      alert("Lỗi cập nhật: " + err.message);
+      handleError(err);
       onRefresh(); // Revert on error
     } finally {
       setIsProcessing(false);
@@ -80,7 +124,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
       
       setBooks(books.filter(b => b.id !== id)); // Optimistic UI
     } catch (err: any) {
-      alert("Lỗi xóa sách: " + err.message);
+      handleError(err);
     } finally {
       setIsProcessing(false);
     }
@@ -103,7 +147,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
       setNewChapter({ title: '', pageNumber: 1, url: '' });
       onRefresh(); // Cần reload để lấy ID mới của chapter
     } catch (err: any) {
-      alert("Lỗi thêm chương: " + err.message);
+      handleError(err);
     } finally {
       setIsProcessing(false);
     }
@@ -117,7 +161,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
        if (error) throw error;
        onRefresh();
     } catch (err: any) {
-       alert("Lỗi xóa chương: " + err.message);
+       handleError(err);
     } finally {
        setIsProcessing(false);
     }
@@ -141,7 +185,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
         setNewCategory({ name: '', description: '', parentId: '' });
         onRefresh();
       } catch (err: any) {
-        alert("Lỗi thêm danh mục: " + err.message);
+        handleError(err);
       } finally {
         setIsProcessing(false);
       }
@@ -165,7 +209,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
           if (error) throw error;
           onRefresh(); // Refresh để update lại danh sách sách (mất category)
       } catch (err: any) {
-          alert("Lỗi xóa: " + err.message);
+          handleError(err);
       } finally {
           setIsProcessing(false);
       }
@@ -180,7 +224,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   // ================= RENDER =================
 
   return (
-    <div className="container mx-auto px-4 py-8 text-white">
+    <div className="container mx-auto px-4 py-8 text-white relative">
+      
+      {/* RLS ERROR MODAL */}
+      {showRlsHelp && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+              <div className="bg-gray-900 border border-red-500 rounded-xl max-w-2xl w-full shadow-2xl p-6">
+                  <div className="flex items-center gap-3 text-red-500 mb-4">
+                      <AlertTriangle size={32} />
+                      <h2 className="text-xl font-bold">Lỗi Quyền Truy Cập (Row Level Security)</h2>
+                  </div>
+                  <p className="text-gray-300 mb-4">
+                      Supabase đang chặn bạn ghi dữ liệu vì chưa có "Policy". Hãy chạy lệnh SQL sau trong <strong>Supabase SQL Editor</strong> để mở quyền truy cập cho Admin:
+                  </p>
+                  
+                  <div className="bg-black rounded-lg p-4 border border-gray-700 font-mono text-xs text-green-400 overflow-x-auto mb-6 relative group">
+                      <pre>{RLS_SQL_FIX}</pre>
+                      <button 
+                        onClick={() => navigator.clipboard.writeText(RLS_SQL_FIX)}
+                        className="absolute top-2 right-2 bg-gray-800 hover:bg-gray-700 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                          Copy
+                      </button>
+                  </div>
+
+                  <div className="flex justify-end">
+                      <button 
+                        onClick={() => setShowRlsHelp(false)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                      >
+                          Đã hiểu, đóng lại
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-indigo-400">Trang Quản Trị (Admin)</h1>
         
