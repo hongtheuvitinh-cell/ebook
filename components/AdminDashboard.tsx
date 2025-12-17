@@ -371,7 +371,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
 
                 <input
                     type="text"
-                    placeholder="URL File PDF (Bắt buộc)"
+                    placeholder="URL File (PDF hoặc Ảnh PNG/JPG)"
                     value={newBook.url}
                     onChange={e => setNewBook({...newBook, url: e.target.value})}
                     className="bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:border-indigo-500 outline-none"
@@ -487,7 +487,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                                     <div className="md:col-span-5">
                                         <input 
                                             className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
-                                            placeholder="URL PDF (để trống nếu dùng file gốc)"
+                                            placeholder="URL (PDF hoặc Ảnh PNG/JPG)"
                                             value={newChapter.url}
                                             onChange={e => setNewChapter({...newChapter, url: e.target.value})}
                                         />
