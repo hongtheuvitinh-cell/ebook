@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Book, Category } from './types';
 import BookReader from './components/BookReader';
 import Library from './components/Library';
 import AdminDashboard from './components/AdminDashboard';
 import AdminLogin from './components/AdminLogin';
-import { ShieldCheck, User, LogOut, Loader2, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, User, LogOut, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
 const App: React.FC = () => {
@@ -13,6 +13,10 @@ const App: React.FC = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // Visitor Counter State
+  const [visitorCount, setVisitorCount] = useState<number>(0);
+  const hasIncrementedRef = useRef(false);
 
   // Auth State (Real Supabase Session)
   const [session, setSession] = useState<any>(null);
@@ -35,11 +39,35 @@ const App: React.FC = () => {
       setSession(session);
     });
 
-    // 3. Fetch Data
+    // 3. Fetch Data & Increment Counter
     fetchData();
+    handleVisitorCounter();
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleVisitorCounter = async () => {
+    if (!isSupabaseConfigured || hasIncrementedRef.current) return;
+    
+    // Đánh dấu đã chạy để tránh React Strict Mode chạy 2 lần trong Dev
+    hasIncrementedRef.current = true;
+
+    try {
+      // Gọi hàm RPC 'increment_visit' để tăng đếm an toàn trên server
+      const { data, error } = await supabase.rpc('increment_visit');
+      
+      if (error) {
+        console.warn("Lỗi đếm lượt xem (Có thể chưa chạy SQL trong Admin):", error.message);
+        // Fallback: Nếu lỗi (ví dụ chưa có hàm), thử đọc thủ công
+        const { data: stats } = await supabase.from('site_stats').select('val').eq('id', 'total_visits').single();
+        if (stats) setVisitorCount(stats.val);
+      } else {
+        setVisitorCount(data as number);
+      }
+    } catch (err) {
+      console.error("Lỗi kết nối bộ đếm:", err);
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -151,7 +179,7 @@ const App: React.FC = () => {
       
       {/* 1. HEADER */}
       {currentView !== 'reader' && (
-        <nav className="h-16 border-b border-gray-800 bg-[#252525] flex items-center justify-between px-6 shrink-0">
+        <nav className="h-16 border-b border-gray-800 bg-[#252525] flex items-center justify-between px-6 shrink-0 z-10">
             <div className="flex items-center gap-2 font-bold text-xl tracking-wide cursor-pointer" onClick={() => setCurrentView('library')}>
                 <span className="text-indigo-500">Kho tàng tri thức</span>
                 <span>E-Book</span>
@@ -189,49 +217,70 @@ const App: React.FC = () => {
       )}
 
       {/* 2. MAIN CONTENT */}
-      <main className="flex-1 overflow-hidden relative">
+      <main className="flex-1 overflow-hidden relative flex flex-col">
         
-        {/* ADMIN VIEW */}
-        {currentView === 'admin' && (
-            <div className="h-full overflow-y-auto custom-scrollbar">
-                {session ? (
-                    <AdminDashboard 
-                        books={books} 
-                        setBooks={setBooks} 
+        <div className="flex-1 overflow-hidden relative">
+            {/* ADMIN VIEW */}
+            {currentView === 'admin' && (
+                <div className="h-full overflow-y-auto custom-scrollbar">
+                    {session ? (
+                        <AdminDashboard 
+                            books={books} 
+                            setBooks={setBooks} 
+                            categories={categories}
+                            setCategories={setCategories}
+                            onRefresh={fetchData}
+                        />
+                    ) : (
+                        <AdminLogin /> // Không cần props onLoginSuccess nữa, App tự detect session
+                    )}
+                </div>
+            )}
+
+            {/* LIBRARY VIEW */}
+            {currentView === 'library' && (
+                <div className="h-full overflow-y-auto custom-scrollbar pb-12">
+                    <Library 
+                        books={books.filter(b => b.isVisible)} 
                         categories={categories}
-                        setCategories={setCategories}
-                        onRefresh={fetchData}
+                        onSelectBook={handleSelectBook} 
                     />
-                ) : (
-                    <AdminLogin /> // Không cần props onLoginSuccess nữa, App tự detect session
-                )}
-            </div>
+                </div>
+            )}
+
+            {/* READER VIEW */}
+            {currentView === 'reader' && selectedBook && (
+                <div className="h-full w-full relative">
+                    <button 
+                        onClick={handleBackToLibrary}
+                        className="absolute top-4 left-20 z-50 bg-black/50 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-sm backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all"
+                    >
+                        <LogOut size={14} />
+                        Thoát
+                    </button>
+                    <BookReader book={selectedBook} />
+                </div>
+            )}
+        </div>
+
+        {/* 3. FOOTER (Visitor Counter) - Only in Library/Admin */}
+        {currentView !== 'reader' && (
+            <footer className="h-10 bg-[#151515] border-t border-gray-800 flex items-center justify-between px-6 text-xs text-gray-500 shrink-0 select-none">
+                <div>
+                   &copy; 2024 Kho tàng tri thức E-Book. All rights reserved.
+                </div>
+                <div className="flex items-center gap-4">
+                   <div className="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded-full border border-gray-700 hover:border-indigo-500/50 transition-colors group">
+                       <Users size={12} className="text-indigo-400 group-hover:text-indigo-300" />
+                       <span className="text-gray-300 font-mono">
+                           {visitorCount > 0 ? visitorCount.toLocaleString() : '---'}
+                       </span>
+                       <span className="hidden sm:inline text-gray-500 ml-1">Lượt truy cập</span>
+                   </div>
+                </div>
+            </footer>
         )}
 
-        {/* LIBRARY VIEW */}
-        {currentView === 'library' && (
-            <div className="h-full overflow-y-auto custom-scrollbar">
-                <Library 
-                    books={books.filter(b => b.isVisible)} 
-                    categories={categories}
-                    onSelectBook={handleSelectBook} 
-                />
-            </div>
-        )}
-
-        {/* READER VIEW */}
-        {currentView === 'reader' && selectedBook && (
-            <div className="h-full w-full relative">
-                <button 
-                    onClick={handleBackToLibrary}
-                    className="absolute top-4 left-20 z-50 bg-black/50 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-sm backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all"
-                >
-                    <LogOut size={14} />
-                    Thoát
-                </button>
-                <BookReader book={selectedBook} />
-            </div>
-        )}
       </main>
     </div>
   );
