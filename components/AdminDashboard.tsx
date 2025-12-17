@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Book, Category } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Book as BookIcon, List, FileText, X, FolderPlus, Folder, Layers, Loader2, AlertTriangle, Terminal } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Book as BookIcon, List, FileText, X, FolderPlus, Folder, Layers, Loader2, AlertTriangle, Database } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface AdminDashboardProps {
@@ -11,17 +11,15 @@ interface AdminDashboardProps {
   onRefresh: () => void; // Trigger reload data in App
 }
 
-// CẬP NHẬT SQL: Chia quyền rõ ràng (Public Read, Admin Write)
+// CẬP NHẬT SQL: Chia quyền rõ ràng (Public Read, Admin Write) + Bảng đếm lượt xem
 const RLS_SQL_FIX = `
 -- COPY TOÀN BỘ đoạn này và chạy trong Supabase SQL Editor --
 
 -- 1. Bảng Categories
 alter table "public"."categories" enable row level security;
--- Xóa policy cũ
 drop policy if exists "Enable all access for categories" on "public"."categories";
 drop policy if exists "Public Read Categories" on "public"."categories";
 drop policy if exists "Admin Write Categories" on "public"."categories";
--- Tạo policy mới
 create policy "Public Read Categories" on "public"."categories" for select to public using (true);
 create policy "Admin Write Categories" on "public"."categories" for all to authenticated using (true) with check (true);
 
@@ -40,13 +38,43 @@ drop policy if exists "Public Read Chapters" on "public"."chapters";
 drop policy if exists "Admin Write Chapters" on "public"."chapters";
 create policy "Public Read Chapters" on "public"."chapters" for select to public using (true);
 create policy "Admin Write Chapters" on "public"."chapters" for all to authenticated using (true) with check (true);
+
+-- 4. TẠO BỘ ĐẾM (Visitor Counter) - QUAN TRỌNG
+create table if not exists "public"."site_stats" (
+    id text primary key,
+    val integer default 0
+);
+-- Tạo dòng dữ liệu đầu tiên (nếu chưa có)
+insert into "public"."site_stats" (id, val) values ('total_visits', 0) on conflict do nothing;
+
+alter table "public"."site_stats" enable row level security;
+drop policy if exists "Public Read Stats" on "public"."site_stats";
+create policy "Public Read Stats" on "public"."site_stats" for select to public using (true);
+
+-- Hàm tăng lượt xem (RPC) - An toàn, tránh xung đột
+create or replace function increment_visit()
+returns integer
+language plpgsql
+security definer
+as $$
+declare
+  current_val int;
+begin
+  update "public"."site_stats" 
+  set val = val + 1 
+  where id = 'total_visits' 
+  returning val into current_val;
+  
+  return current_val;
+end;
+$$;
 `;
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, categories, setCategories, onRefresh }) => {
   const [activeTab, setActiveTab] = useState<'books' | 'categories'>('books');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // State lỗi RLS
+  // State lỗi RLS hoặc xem hướng dẫn DB
   const [showRlsHelp, setShowRlsHelp] = useState(false);
 
   // --- BOOK STATE ---
@@ -60,7 +88,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   // Helper handle error
   const handleError = (err: any) => {
       console.error(err);
-      if (err.message && (err.message.includes('row-level security') || err.code === '42501')) {
+      if (err.message && (err.message.includes('row-level security') || err.code === '42501' || err.message.includes('permission denied'))) {
           setShowRlsHelp(true);
       } else {
           alert("Lỗi: " + err.message);
@@ -226,59 +254,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   return (
     <div className="container mx-auto px-4 py-8 text-white relative">
       
-      {/* RLS ERROR MODAL */}
+      {/* RLS ERROR / SETUP DB MODAL */}
       {showRlsHelp && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-              <div className="bg-gray-900 border border-red-500 rounded-xl max-w-2xl w-full shadow-2xl p-6">
-                  <div className="flex items-center gap-3 text-red-500 mb-4">
-                      <AlertTriangle size={32} />
-                      <h2 className="text-xl font-bold">Lỗi Quyền Truy Cập (Row Level Security)</h2>
+              <div className="bg-gray-900 border border-indigo-500 rounded-xl max-w-2xl w-full shadow-2xl p-6">
+                  <div className="flex items-center gap-3 text-indigo-400 mb-4">
+                      <Database size={32} />
+                      <h2 className="text-xl font-bold">Cài Đặt Database (SQL)</h2>
                   </div>
-                  <p className="text-gray-300 mb-4">
-                      Supabase đang chặn bạn ghi dữ liệu vì chưa có "Policy". Hãy chạy lệnh SQL sau trong <strong>Supabase SQL Editor</strong> để mở quyền truy cập cho Admin:
+                  <p className="text-gray-300 mb-4 text-sm">
+                      Copy toàn bộ mã dưới đây và chạy trong <strong>Supabase SQL Editor</strong> để khởi tạo bảng, cấp quyền, và tạo bộ đếm lượt xem.
                   </p>
                   
-                  <div className="bg-black rounded-lg p-4 border border-gray-700 font-mono text-xs text-green-400 overflow-x-auto mb-6 relative group">
+                  <div className="bg-black rounded-lg p-4 border border-gray-700 font-mono text-xs text-green-400 overflow-x-auto mb-6 relative group h-64 custom-scrollbar">
                       <pre>{RLS_SQL_FIX}</pre>
                       <button 
                         onClick={() => navigator.clipboard.writeText(RLS_SQL_FIX)}
-                        className="absolute top-2 right-2 bg-gray-800 hover:bg-gray-700 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-2 bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity border border-gray-600"
                       >
-                          Copy
+                          Copy SQL
                       </button>
                   </div>
 
                   <div className="flex justify-end">
                       <button 
                         onClick={() => setShowRlsHelp(false)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                        className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-medium transition-colors"
                       >
-                          Đã hiểu, đóng lại
+                          Đóng
                       </button>
                   </div>
               </div>
           </div>
       )}
 
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-indigo-400">Trang Quản Trị (Admin)</h1>
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
+        <h1 className="text-3xl font-bold text-indigo-400">Trang Quản Trị</h1>
         
-        {/* TABS */}
-        <div className="flex bg-gray-800 p-1 rounded-lg">
-            <button 
-                onClick={() => setActiveTab('books')}
-                disabled={isProcessing}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'books' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+        <div className="flex items-center gap-2">
+            {/* SETUP DB BUTTON */}
+            <button
+                onClick={() => setShowRlsHelp(true)}
+                className="px-4 py-2 rounded-md text-sm font-medium bg-gray-800 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-900/20 hover:text-indigo-300 transition-colors flex items-center gap-2"
+                title="Xem mã SQL cài đặt"
             >
-                <BookIcon size={16} /> Quản Lý Sách
+                <Database size={16} /> <span className="hidden sm:inline">Cài đặt DB</span>
             </button>
-            <button 
-                onClick={() => setActiveTab('categories')}
-                disabled={isProcessing}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'categories' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-            >
-                <Layers size={16} /> Quản Lý Danh Mục
-            </button>
+
+            {/* TABS */}
+            <div className="flex bg-gray-800 p-1 rounded-lg">
+                <button 
+                    onClick={() => setActiveTab('books')}
+                    disabled={isProcessing}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'books' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                >
+                    <BookIcon size={16} /> <span className="hidden sm:inline">Sách</span>
+                </button>
+                <button 
+                    onClick={() => setActiveTab('categories')}
+                    disabled={isProcessing}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'categories' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                >
+                    <Layers size={16} /> <span className="hidden sm:inline">Danh Mục</span>
+                </button>
+            </div>
         </div>
       </div>
 
