@@ -1,0 +1,5 @@
+{
+  "name": "Gemini E-Book Reader",
+  "description": "An immersive e-book reader with page-flipping effects and Gemini AI integration for content analysis and summarization.",
+  "requestFramePermissions": []
+}
