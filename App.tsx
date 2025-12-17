@@ -1,83 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Book, Category } from './types';
 import BookReader from './components/BookReader';
 import Library from './components/Library';
 import AdminDashboard from './components/AdminDashboard';
-import { ShieldCheck, User, LogOut } from 'lucide-react';
+import { ShieldCheck, User, LogOut, Loader2 } from 'lucide-react';
+import { supabase } from './services/supabaseClient';
 
 const App: React.FC = () => {
-  // --- STATE DANH MỤC (Cây thư mục) ---
-  const [categories, setCategories] = useState<Category[]>([
-    // Cấp 1
-    { id: 'cat_sgk', name: 'Sách Giáo Khoa', description: 'Tài liệu học tập chính quy' },
-    { id: 'cat_truyen', name: 'Truyện & Tiểu Thuyết', description: 'Văn học giải trí' },
-    { id: 'cat_nhatky', name: 'Nhật Ký & Hồi Ký', description: 'Ghi chép cá nhân' },
-    
-    // Cấp 2 - Con của SGK
-    { id: 'cat_sgk_hs', name: 'SGK Học Sinh', parentId: 'cat_sgk' },
-    { id: 'cat_sgk_gv', name: 'Sách Giáo Viên', parentId: 'cat_sgk' },
-    { id: 'cat_sgk_bt', name: 'Sách Bài Tập', parentId: 'cat_sgk' },
+  // --- STATE ---
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    // Cấp 2 - Con của Truyện
-    { id: 'cat_truyen_ngan', name: 'Truyện Ngắn', parentId: 'cat_truyen' },
-    { id: 'cat_tieu_thuyet', name: 'Tiểu Thuyết Dài Kỳ', parentId: 'cat_truyen' },
-  ]);
-
-  // --- STATE DỮ LIỆU SÁCH ---
-  // Gán categoryId cho sách để test
-  const [books, setBooks] = useState<Book[]>([
-    {
-      id: 'demo-1',
-      title: 'Toán Học - Lớp 1 (Demo)',
-      author: 'Bộ Giáo Dục',
-      uploadDate: new Date().toISOString(),
-      categoryId: 'cat_sgk_hs', // Thuộc SGK Học Sinh
-      url: 'https://raw.githubusercontent.com/mozilla/pdf.js/ba2edeae/web/compressed.tracemonkey-pldi-09.pdf', 
-      chapters: [
-        { id: 'c1', title: 'Giới thiệu', pageNumber: 1 },
-        { id: 'c2', title: 'Chương 1: Phép cộng', pageNumber: 3 },
-      ],
-      isVisible: true 
-    },
-    {
-      id: 'demo-3',
-      title: 'Dế Mèn Phiêu Lưu Ký',
-      author: 'Tô Hoài',
-      uploadDate: new Date().toISOString(),
-      categoryId: 'cat_truyen_ngan', // Thuộc Truyện Ngắn
-      url: 'https://raw.githubusercontent.com/mozilla/pdf.js/ba2edeae/web/compressed.tracemonkey-pldi-09.pdf', 
-      chapters: [
-        { id: 'tap1', title: 'Chương 1: Tôi sống độc lập', pageNumber: 1 },
-      ],
-      isVisible: true
-    },
-    {
-      id: 'demo-2',
-      title: 'Tài liệu mật (Ẩn)',
-      author: 'Admin',
-      uploadDate: new Date().toISOString(),
-      url: 'https://raw.githubusercontent.com/mozilla/pdf.js/ba2edeae/web/compressed.tracemonkey-pldi-09.pdf', 
-      chapters: [],
-      isVisible: false 
-    },
-    {
-      id: 'demo-4',
-      title: 'Hướng Dẫn Giảng Dạy Toán',
-      author: 'Bộ Giáo Dục',
-      uploadDate: new Date().toISOString(),
-      categoryId: 'cat_sgk_gv', // Thuộc SGK Giáo Viên
-      url: 'https://raw.githubusercontent.com/mozilla/pdf.js/ba2edeae/web/compressed.tracemonkey-pldi-09.pdf', 
-      chapters: [],
-      isVisible: true 
-    }
-  ]);
-
-  // --- STATE ĐIỀU HƯỚNG ---
-  // view: 'library' (Thư viện user), 'reader' (Đọc sách), 'admin' (Trang quản trị)
+  // view: 'library' | 'reader' | 'admin'
   const [currentView, setCurrentView] = useState<'library' | 'reader' | 'admin'>('library');
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-  // --- LOGIC ---
+  // --- FETCH DATA FROM SUPABASE ---
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Fetch Categories
+      const { data: catData, error: catError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (catError) throw catError;
+
+      const mappedCats: Category[] = (catData || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        parentId: c.parent_id // Map snake_case from DB to camelCase
+      }));
+      setCategories(mappedCats);
+
+      // 2. Fetch Books with Chapters
+      const { data: bookData, error: bookError } = await supabase
+        .from('books')
+        .select(`
+          *,
+          chapters (
+            id, title, page_number, url
+          )
+        `)
+        .order('upload_date', { ascending: false });
+
+      if (bookError) throw bookError;
+
+      const mappedBooks: Book[] = (bookData || []).map((b: any) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        url: b.url,
+        coverUrl: b.cover_url,
+        categoryId: b.category_id, // Map snake_case
+        uploadDate: b.upload_date,
+        isVisible: b.is_visible,
+        chapters: (b.chapters || []).map((ch: any) => ({
+          id: ch.id,
+          title: ch.title,
+          pageNumber: ch.page_number,
+          url: ch.url
+        })).sort((a: any, b: any) => a.pageNumber - b.pageNumber) // Sort chapters by page
+      }));
+      setBooks(mappedBooks);
+
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      alert("Không thể tải dữ liệu từ máy chủ.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // --- HANDLERS ---
   const handleSelectBook = (book: Book) => {
     setSelectedBook(book);
     setCurrentView('reader');
@@ -89,10 +91,19 @@ const App: React.FC = () => {
   };
 
   // --- RENDER ---
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen bg-[#1a1a1a] flex flex-col items-center justify-center text-white gap-4">
+        <Loader2 size={48} className="animate-spin text-indigo-500" />
+        <p className="text-gray-400">Đang tải thư viện sách...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#1a1a1a] text-white font-sans flex flex-col">
       
-      {/* 1. THANH ĐIỀU HƯỚNG (HEADER) - Dùng để demo chuyển vai trò */}
+      {/* 1. THANH ĐIỀU HƯỚNG (HEADER) */}
       {currentView !== 'reader' && (
         <nav className="h-16 border-b border-gray-800 bg-[#252525] flex items-center justify-between px-6 shrink-0">
             <div className="flex items-center gap-2 font-bold text-xl tracking-wide">
@@ -130,6 +141,7 @@ const App: React.FC = () => {
                     setBooks={setBooks} 
                     categories={categories}
                     setCategories={setCategories}
+                    onRefresh={fetchData} // Pass refresh trigger
                 />
             </div>
         )}
