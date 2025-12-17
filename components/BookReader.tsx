@@ -3,7 +3,8 @@ import { Document } from 'react-pdf';
 import { 
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   Sparkles, AlertCircle, Maximize, X,
-  Menu, Book as BookIcon, Upload, Columns, File
+  Menu, Book as BookIcon, ImageIcon, Loader2,
+  Play, Pause, SkipBack, SkipForward, Volume2, Headphones
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
@@ -13,14 +14,15 @@ interface BookReaderProps {
   book: Book;
 }
 
+const PDF_VERSION = '4.4.168';
 const pdfOptions = {
-  cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/cmaps/',
+  cMapUrl: `https://unpkg.com/pdfjs-dist@${PDF_VERSION}/cmaps/`,
   cMapPacked: true,
-  standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/standard_fonts/',
+  standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${PDF_VERSION}/standard_fonts/`,
 };
 
 const BookReader: React.FC<BookReaderProps> = ({ book }) => {
-  const [pdfSource, setPdfSource] = useState<string | File>(book.url);
+  const [source, setSource] = useState<string>(book.url);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
 
   const [numPages, setNumPages] = useState<number>(0);
@@ -29,402 +31,310 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [isAIActive, setIsAIActive] = useState(false);
   const [currentPageText, setCurrentPageText] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // View Mode: 'single' (trang đơn) hoặc 'book' (2 trang/sách)
   const [viewMode, setViewMode] = useState<'single' | 'book'>('single');
-  
-  // Layout State
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  // Refs
   const documentRef = useRef<any>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // UI States
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const activeChapter = book.chapters.find(c => c.id === activeChapterId);
+  // Audio States
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
 
-  // Tự động chuyển sang Book Mode trên màn hình lớn
   useEffect(() => {
-    if (containerSize && containerSize.width > 1200) { // Tăng ngưỡng auto switch lên 1 chút
-      setViewMode('book');
-    } else {
-      setViewMode('single');
-    }
-  }, [containerSize?.width]); 
+    setSource(book.url);
+    setPageNumber(1);
+    setIsLoading(true);
+    setError(null);
+    if (book.contentType !== 'audio') setIsPlaying(false);
+  }, [book.id]);
 
-  // --- RESIZE HANDLER ---
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight
-        });
+        setContainerSize({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
       }
     };
-
     window.addEventListener('resize', handleResize);
     handleResize();
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
+    return () => window.removeEventListener('resize', handleResize);
   }, [isSidebarOpen, isPresentationMode]);
 
-  // --- KEYBOARD NAV ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') handleNext();
-      if (e.key === 'ArrowLeft') handlePrev();
-      if (e.key === 'Escape' && isPresentationMode) togglePresentationMode();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pageNumber, numPages, isPresentationMode, viewMode]);
+  // Audio Logic
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) audioRef.current.pause();
+      else audioRef.current.play();
+      setIsPlaying(!isPlaying);
+    }
+  };
 
-  // --- PDF HANDLERS ---
+  const onTimeUpdate = () => {
+    if (audioRef.current) {
+      setAudioProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+    }
+  };
+
+  const onLoadedMetadata = () => {
+    if (audioRef.current) setDuration(audioRef.current.duration);
+    setIsLoading(false);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = (parseFloat(e.target.value) / 100) * duration;
+    if (audioRef.current) audioRef.current.currentTime = time;
+    setAudioProgress(parseFloat(e.target.value));
+  };
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return "0:00";
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
-    setError(null);
+    setIsLoading(false);
     extractPageText(1);
   };
 
-  const onDocumentLoadError = (err: Error) => {
-    console.error("PDF Load Error:", err);
-    setError(`Không thể tải sách. Lỗi: ${err.message}.`);
-  };
-
-  // --- NAVIGATION CONTROLS ---
   const handleNext = () => {
-    if (pageNumber >= numPages) return;
-
-    if (viewMode === 'book') {
-       // Logic trang sách: 
-       // Trang 1 (Bìa) -> Next -> Trang 2 (Trái) & 3 (Phải)
-       // Trang 2 -> Next -> Trang 4 (Trái) & 5 (Phải)
-       let next = pageNumber;
-       if (pageNumber === 1) next = 2;
-       else next = pageNumber + 2;
-
-       if (next > numPages) return;
-       setPageNumber(next);
-       extractPageText(next);
-    } else {
-       // Logic đơn
-       setPageNumber(prev => prev + 1);
-       extractPageText(pageNumber + 1);
+    if (book.contentType === 'audio') {
+        if (audioRef.current) audioRef.current.currentTime += 30;
+        return;
     }
-    scrollToTop();
+    if (pageNumber >= numPages) return;
+    const next = Math.min(pageNumber + (viewMode === 'book' && pageNumber > 1 ? 2 : 1), numPages);
+    setPageNumber(next);
+    if (book.contentType === 'pdf') extractPageText(next);
   };
 
   const handlePrev = () => {
+    if (book.contentType === 'audio') {
+        if (audioRef.current) audioRef.current.currentTime -= 30;
+        return;
+    }
     if (pageNumber <= 1) return;
-
-    if (viewMode === 'book') {
-        let prev = pageNumber;
-        if (pageNumber === 2) prev = 1;
-        else prev = pageNumber - 2;
-        
-        if (prev < 1) prev = 1;
-        setPageNumber(prev);
-        extractPageText(prev);
-    } else {
-        setPageNumber(prev => prev - 1);
-        extractPageText(pageNumber - 1);
-    }
-    scrollToTop();
-  };
-
-  const scrollToTop = () => {
-    if (containerRef.current) {
-        containerRef.current.scrollTop = 0;
-    }
+    const prev = Math.max(pageNumber - (viewMode === 'book' && pageNumber > 2 ? 2 : 1), 1);
+    setPageNumber(prev);
+    if (book.contentType === 'pdf') extractPageText(prev);
   };
 
   const handleChapterClick = (chapter: Chapter) => {
     setActiveChapterId(chapter.id);
-    const targetUrl = chapter.url ? chapter.url : book.url;
-
-    if (targetUrl !== pdfSource) {
-        setPdfSource(targetUrl);
-    } else {
-        const targetPage = chapter.pageNumber || 1;
-        setPageNumber(targetPage);
-        extractPageText(targetPage);
-        scrollToTop();
-    }
-
-    if (window.innerWidth < 768) {
-        setIsSidebarOpen(false);
-    }
+    const targetUrl = chapter.url || book.url;
+    if (targetUrl !== source) setSource(targetUrl);
+    setPageNumber(chapter.pageNumber || 1);
   };
 
   const extractPageText = useCallback(async (pageNum: number) => {
-    if (!documentRef.current) return;
+    if (!documentRef.current || book.contentType !== 'pdf') return;
     try {
-      if (pageNum > documentRef.current.numPages || pageNum < 1) return;
       const page = await documentRef.current.getPage(pageNum);
       const textContent = await page.getTextContent();
-      const text = textContent.items.map((item: any) => item.str).join(' ');
-      setCurrentPageText(text);
-    } catch (error) {
-       // ignore
-    }
-  }, []);
+      setCurrentPageText(textContent.items.map((item: any) => item.str).join(' '));
+    } catch (e) {}
+  }, [book.contentType]);
 
-  // --- UI HELPERS ---
   const togglePresentationMode = () => {
     if (!isPresentationMode) {
+      document.documentElement.requestFullscreen?.();
       setIsPresentationMode(true);
       setIsSidebarOpen(false);
-      setScale(1.0); 
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().catch(console.error);
-      }
     } else {
+      document.exitFullscreen?.();
       setIsPresentationMode(false);
       setIsSidebarOpen(true);
-      setScale(1.0);
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(console.error);
-      }
     }
   };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-        setPdfSource(file);
-        setNumPages(0);
-        setPageNumber(1);
-    }
-  };
-
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 2.0));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.5));
-
-  // --- DIMENSION CALCULATION ---
-  const getPageDimensions = () => {
-    if (!containerSize) return { width: 600 };
-    
-    const padding = isPresentationMode ? 20 : 40;
-    const availableWidth = containerSize.width - padding;
-    const availableHeight = containerSize.height - padding;
-
-    if (viewMode === 'book' && pageNumber !== 1) {
-        // Book Mode (2 pages)
-        // Cần fit 2 trang vào chiều ngang
-        const targetWidthPerPage = (availableWidth / 2) * 0.95; // 95% width to leave gap
-        // Giới hạn max width để sách không quá to
-        const maxWidth = 800; // Tăng từ 600 lên 800 để sách to hơn trên màn hình lớn
-        
-        return {
-            width: Math.min(targetWidthPerPage * scale, maxWidth),
-            height: undefined
-        };
-    }
-
-    // Single Page Mode or Cover Page
-    if (isPresentationMode) {
-       return { height: availableHeight * scale, width: undefined };
-    }
-    
-    // Normal View (Single)
-    return {
-       // Tăng tỷ lệ chiều rộng lên 85% (0.85) và max-width lên 1200px
-       width: Math.min(availableWidth * 0.85 * scale, 1200), 
-       height: undefined
-    };
-  };
-
-  const { width: pageWidth, height: pageHeight } = getPageDimensions();
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-[#1a1a1a] gap-4">
-        <div className="text-center p-8 bg-gray-800 rounded-xl border border-red-500/50 max-w-md">
-          <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
-          <p className="text-gray-300 mb-4">{error}</p>
-          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-indigo-600 rounded text-white flex items-center gap-2 mx-auto">
-             <Upload size={16} /> Chọn file khác
-          </button>
-        </div>
-        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="application/pdf" />
+      <div className="flex flex-col items-center justify-center h-full bg-gray-900 p-8 text-center">
+        <AlertCircle size={48} className="text-red-500 mb-4" />
+        <p className="text-white font-bold">{error}</p>
+        <button onClick={() => window.location.reload()} className="mt-4 bg-indigo-600 px-4 py-2 rounded">Thử lại</button>
       </div>
     );
   }
 
   return (
-    <div className={`flex h-full w-full transition-colors duration-500 ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
+    <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
       
-      {/* 1. SIDEBAR */}
+      {/* SIDEBAR */}
       {!isPresentationMode && (
-        <div className={`bg-[#252525] border-r border-black flex flex-col transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-80 opacity-100' : 'w-0 opacity-0 overflow-hidden'}`}>
-            <div className="p-5 border-b border-gray-700 bg-[#2d2d2d] flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-indigo-400 mb-1">
-                    <BookIcon size={18} />
-                    <span className="text-xs font-bold uppercase tracking-wider opacity-80">Tên sách</span>
-                </div>
-                <h1 className="font-bold text-white text-xl leading-snug break-words font-serif" title={book.title}>{book.title}</h1>
-                {activeChapter && (
-                     <div className="mt-2 pt-2 border-t border-gray-600">
-                        <p className="text-sm text-indigo-300 font-medium leading-tight">{activeChapter.title}</p>
-                    </div>
-                )}
+        <div className={`bg-[#252525] border-r border-black flex flex-col transition-all duration-300 ${isSidebarOpen ? 'w-80' : 'w-0 overflow-hidden'}`}>
+            <div className="p-5 border-b border-gray-700 bg-[#2d2d2d]">
+                <h1 className="font-bold text-white text-lg font-serif line-clamp-2">{book.title}</h1>
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="p-2 space-y-1">
-                    {book.chapters.map((chapter) => (
-                        <button
-                            key={chapter.id}
-                            onClick={() => handleChapterClick(chapter)}
-                            className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-all flex items-start group relative overflow-hidden ${activeChapterId === chapter.id ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:bg-gray-800'}`}
-                        >
-                            <span className={`mr-3 text-xs mt-0.5 px-1.5 py-0.5 rounded flex-shrink-0 ${activeChapterId === chapter.id ? 'bg-indigo-500 text-white' : 'bg-gray-700'}`}>{chapter.pageNumber}</span>
-                            <div className="flex-1">
-                                <span className="line-clamp-2">{chapter.title}</span>
-                            </div>
-                        </button>
-                    ))}
-                </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                {book.chapters.map(ch => (
+                    <button key={ch.id} onClick={() => handleChapterClick(ch)} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm mb-1 flex items-start gap-3 ${activeChapterId === ch.id ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:bg-gray-800'}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] mt-0.5 ${activeChapterId === ch.id ? 'bg-indigo-600 text-white' : 'bg-gray-700'}`}>{ch.pageNumber}</span>
+                        <span className="line-clamp-2">{ch.title}</span>
+                    </button>
+                ))}
             </div>
         </div>
       )}
 
-      {/* 2. MAIN AREA */}
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+      {/* MAIN */}
+      <div className="flex-1 flex flex-col relative overflow-hidden">
         
         {/* TOOLBAR */}
         {!isPresentationMode && (
-          <div className="h-14 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shadow-lg shrink-0">
-            <div className="flex items-center gap-3">
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg"><Menu size={20} /></button>
-                <div className="h-6 w-px bg-gray-700 mx-1"></div>
+          <div className="h-14 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0">
+            <div className="flex items-center gap-2">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-400 hover:text-white"><Menu size={18} /></button>
+                <div className="h-6 w-px bg-gray-800 mx-1"></div>
                 
-                <div className="flex items-center gap-2 bg-[#2d2d2d] px-2 py-1 rounded-lg">
-                    <button onClick={handlePrev} disabled={pageNumber <= 1} className="p-1 text-gray-400 hover:text-white disabled:opacity-30"><ChevronLeft size={18} /></button>
-                    <span className="text-sm text-gray-300 w-24 text-center font-mono">
-                        {viewMode === 'book' && pageNumber !== 1 
-                            ? `${pageNumber}-${Math.min(pageNumber+1, numPages)} / ${numPages}` 
-                            : `${pageNumber} / ${numPages}`
-                        }
-                    </span>
-                    <button onClick={handleNext} disabled={pageNumber >= numPages} className="p-1 text-gray-400 hover:text-white disabled:opacity-30"><ChevronRight size={18} /></button>
-                </div>
+                {book.contentType === 'pdf' ? (
+                  <div className="flex items-center gap-1 bg-[#252525] px-2 py-1 rounded-lg">
+                      <button onClick={handlePrev} disabled={pageNumber <= 1} className="p-1 text-gray-400 disabled:opacity-20"><ChevronLeft size={16} /></button>
+                      <span className="text-[11px] text-gray-400 w-16 text-center font-mono">{pageNumber} / {numPages}</span>
+                      <button onClick={handleNext} disabled={pageNumber >= numPages} className="p-1 text-gray-400 disabled:opacity-20"><ChevronRight size={16} /></button>
+                  </div>
+                ) : book.contentType === 'image' ? (
+                  <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full flex items-center gap-1 uppercase">
+                    <ImageIcon size={14} /> HÌNH ẢNH
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full flex items-center gap-1 uppercase">
+                    <Headphones size={14} /> SÁCH NÓI
+                  </span>
+                )}
                 
-                {/* View Mode Toggle */}
-                <div className="hidden md:flex bg-[#2d2d2d] rounded-lg p-0.5 ml-2">
-                    <button 
-                        onClick={() => setViewMode('single')}
-                        className={`p-1.5 rounded-md transition-all ${viewMode === 'single' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                        title="Trang đơn"
-                    >
-                        <File size={16} />
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('book')}
-                        className={`p-1.5 rounded-md transition-all ${viewMode === 'book' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                        title="Chế độ sách (2 trang)"
-                    >
-                        <Columns size={16} />
-                    </button>
-                </div>
-
-                <div className="flex items-center gap-1 bg-[#2d2d2d] px-2 py-1 rounded-lg ml-2">
-                    <button onClick={handleZoomOut} className="p-1 text-gray-400 hover:text-white"><ZoomOut size={16} /></button>
-                    <span className="text-xs text-gray-400 w-12 text-center">{Math.round(scale * 100)}%</span>
-                    <button onClick={handleZoomIn} className="p-1 text-gray-400 hover:text-white"><ZoomIn size={16} /></button>
-                </div>
+                {book.contentType !== 'audio' && (
+                  <div className="flex items-center gap-1 bg-[#252525] px-1 py-1 rounded-lg">
+                      <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1 text-gray-400"><ZoomOut size={14} /></button>
+                      <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
+                      <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1 text-gray-400"><ZoomIn size={14} /></button>
+                  </div>
+                )}
             </div>
-            <div className="flex items-center gap-3">
-               <button onClick={togglePresentationMode} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 rounded-lg border border-indigo-500/30 text-sm font-medium">
-                <Maximize size={16} /><span className="hidden sm:inline">Toàn màn hình</span>
-               </button>
-               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded-lg transition-colors ${isAIActive ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}>
-                <Sparkles size={20} />
-               </button>
+            <div className="flex items-center gap-2">
+               <button onClick={togglePresentationMode} className="p-2 text-gray-400 hover:text-indigo-400"><Maximize size={18} /></button>
+               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded-lg ${isAIActive ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400'}`}><Sparkles size={18} /></button>
             </div>
           </div>
         )}
 
-        {/* READER CONTAINER */}
-        <div ref={containerRef} className={`flex-1 overflow-y-auto overflow-x-hidden relative ${isPresentationMode ? 'bg-black' : 'bg-[#333]'} custom-scrollbar`}>
-            
-            <div className={`min-h-full w-full flex items-center justify-center ${isPresentationMode ? 'p-1' : 'p-4 md:p-8'}`}>
+        {/* CONTAINER */}
+        <div ref={containerRef} className={`flex-1 overflow-y-auto relative ${isPresentationMode ? 'bg-black' : 'bg-[#2a2a2a]'} custom-scrollbar`}>
+            <div className="min-h-full w-full flex items-center justify-center p-4">
                 
-                {numPages === 0 && (
-                    <div className="flex flex-col items-center justify-center text-gray-400 z-10">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent mb-2"></div>
-                        <p>Đang chuẩn bị sách...</p>
+                {isLoading && (
+                    <div className="flex flex-col items-center">
+                        <Loader2 className="animate-spin text-indigo-500 mb-2" />
+                        <p className="text-gray-500 text-sm">Đang tải nội dung...</p>
                     </div>
                 )}
 
-                <Document
-                    file={pdfSource}
-                    onLoadSuccess={onDocumentLoadSuccess}
-                    onLoadError={onDocumentLoadError}
-                    options={pdfOptions}
-                    inputRef={documentRef}
-                    className="flex justify-center" 
-                >
-                    {/* LOGIC HIỂN THỊ */}
-                    
-                    {/* 1. VIEW SÁCH (2 TRANG) */}
-                    {viewMode === 'book' && pageNumber !== 1 && numPages > 0 && containerSize ? (
-                        <div className="flex shadow-2xl rounded-sm overflow-hidden bg-[#e0e0e0] border border-gray-700 relative">
-                            {/* Trang Trái */}
-                            <div className="relative border-r border-gray-400/30 bg-white">
-                                <PDFPage 
-                                    pageNumber={pageNumber} 
-                                    width={pageWidth} 
-                                    scale={scale} 
-                                    isPresentation={isPresentationMode} 
-                                />
-                                {/* Hiệu ứng gáy sách trái */}
-                                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-black/20 to-transparent pointer-events-none mix-blend-multiply"></div>
-                            </div>
-                            
-                            {/* Trang Phải (nếu có) */}
-                            {pageNumber + 1 <= numPages ? (
-                                <div className="relative bg-white">
-                                    <PDFPage 
-                                        pageNumber={pageNumber + 1} 
-                                        width={pageWidth} 
-                                        scale={scale} 
-                                        isPresentation={isPresentationMode} 
-                                    />
-                                    {/* Hiệu ứng gáy sách phải */}
-                                    <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none mix-blend-multiply"></div>
-                                </div>
-                            ) : (
-                                /* Trang trắng (cuối sách) */
-                                <div className="bg-[#f0f0f0]" style={{ width: pageWidth, height: pageHeight || (pageWidth * 1.414) }}></div>
-                            )}
-                        </div>
-                    ) : (
-                        /* 2. VIEW ĐƠN HOẶC TRANG BÌA */
-                        numPages > 0 && containerSize && (
-                            <div className={pageNumber === 1 && viewMode === 'book' ? "shadow-2xl" : ""}>
-                                <PDFPage 
-                                    pageNumber={pageNumber}
-                                    width={pageWidth}
-                                    height={pageHeight}
-                                    scale={scale}
-                                    isPresentation={isPresentationMode}
-                                />
-                            </div>
-                        )
-                    )}
-                </Document>
+                {book.contentType === 'pdf' ? (
+                  <Document
+                      file={source}
+                      onLoadSuccess={onDocumentLoadSuccess}
+                      onLoadError={(err) => { setError(err.message); setIsLoading(false); }}
+                      options={pdfOptions}
+                      inputRef={documentRef}
+                      className="flex justify-center"
+                      loading={null}
+                  >
+                      {viewMode === 'book' && pageNumber > 1 && numPages > 0 ? (
+                          <div className="flex shadow-2xl rounded bg-white">
+                              <PDFPage pageNumber={pageNumber} width={Math.min(containerSize?.width ? containerSize.width * 0.45 : 600, 800)} scale={scale} />
+                              {pageNumber + 1 <= numPages && <PDFPage pageNumber={pageNumber + 1} width={Math.min(containerSize?.width ? containerSize.width * 0.45 : 600, 800)} scale={scale} />}
+                          </div>
+                      ) : (
+                          numPages > 0 && <PDFPage pageNumber={pageNumber} width={Math.min(containerSize?.width ? containerSize.width * 0.9 : 600, 1000)} scale={scale} />
+                      )}
+                  </Document>
+                ) : book.contentType === 'image' ? (
+                  <div className="flex justify-center items-center" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
+                     <img 
+                        src={source} 
+                        alt="Content"
+                        className="shadow-2xl bg-white max-w-full h-auto"
+                        style={{ width: containerSize ? containerSize.width * 0.9 : 'auto' }}
+                        onLoad={() => setIsLoading(false)}
+                        onError={() => { setError("Không thể nạp hình ảnh. Kiểm tra lại đường dẫn."); setIsLoading(false); }}
+                     />
+                  </div>
+                ) : (
+                  /* AUDIO PLAYER INTERFACE */
+                  <div className="w-full max-w-2xl bg-gray-900/50 backdrop-blur-xl rounded-3xl p-8 border border-white/5 shadow-2xl flex flex-col items-center animate-slide-up">
+                      <div className="relative mb-8">
+                          {/* Animated Disk Effect */}
+                          <div className={`w-64 h-64 rounded-full border-8 border-gray-800 shadow-2xl overflow-hidden relative ${isPlaying ? 'animate-[spin_10s_linear_infinite]' : ''}`}>
+                              <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-transparent"></div>
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                  <div className="w-full h-full bg-indigo-900/40 flex items-center justify-center p-4">
+                                      <BookIcon size={80} className="text-indigo-400 opacity-50" />
+                                  </div>
+                              </div>
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-gray-900 rounded-full border-4 border-gray-800 z-10"></div>
+                          </div>
+                          {/* Needle Effect */}
+                          <div className={`absolute -right-4 top-0 w-2 h-32 bg-gray-700 origin-top transition-transform duration-500 rounded-full ${isPlaying ? 'rotate-[25deg]' : 'rotate-0'}`}></div>
+                      </div>
+
+                      <div className="text-center mb-8">
+                          <h2 className="text-2xl font-bold text-white mb-2 font-serif">{book.title}</h2>
+                          <p className="text-indigo-400 font-medium">{book.author}</p>
+                      </div>
+
+                      <audio
+                        ref={audioRef}
+                        src={source}
+                        onTimeUpdate={onTimeUpdate}
+                        onLoadedMetadata={onLoadedMetadata}
+                        onEnded={() => setIsPlaying(false)}
+                        onError={() => { setError("Lỗi nạp âm thanh."); setIsLoading(false); }}
+                      />
+
+                      {/* Controls */}
+                      <div className="w-full space-y-6">
+                          {/* Progress Bar */}
+                          <div className="space-y-2">
+                              <input 
+                                type="range" 
+                                value={audioProgress}
+                                onChange={handleSeek}
+                                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                                  <span>{formatTime(audioRef.current?.currentTime || 0)}</span>
+                                  <span>{formatTime(duration)}</span>
+                              </div>
+                          </div>
+
+                          {/* Buttons */}
+                          <div className="flex items-center justify-center gap-8">
+                              <button onClick={() => { if(audioRef.current) audioRef.current.currentTime -= 10; }} className="text-gray-400 hover:text-white transition-colors p-2"><SkipBack size={24}/></button>
+                              <button onClick={togglePlay} className="w-16 h-16 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/20 transition-all hover:scale-110 active:scale-95">
+                                  {isPlaying ? <Pause size={32} /> : <Play size={32} className="ml-1" />}
+                              </button>
+                              <button onClick={() => { if(audioRef.current) audioRef.current.currentTime += 10; }} className="text-gray-400 hover:text-white transition-colors p-2"><SkipForward size={24}/></button>
+                          </div>
+
+                          <div className="flex items-center gap-3 justify-center text-gray-500 bg-gray-800/30 py-2 px-4 rounded-full w-fit mx-auto">
+                              <Volume2 size={16} />
+                              <div className="text-[10px] font-bold uppercase tracking-widest">Âm thanh HD</div>
+                          </div>
+                      </div>
+                  </div>
+                )}
             </div>
 
             {isPresentationMode && (
-                 <button onClick={togglePresentationMode} className="fixed top-4 right-4 p-2 bg-gray-800/50 hover:bg-gray-700 text-white rounded-full backdrop-blur z-50">
-                    <X size={24} />
+                 <button onClick={togglePresentationMode} className="fixed top-6 right-6 p-2 bg-gray-800/80 text-white rounded-full border border-gray-600 z-50 transition-colors hover:bg-gray-700">
+                    <X size={20} />
                  </button>
             )}
         </div>
