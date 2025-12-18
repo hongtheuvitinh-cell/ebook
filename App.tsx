@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Book, Category } from './types';
 import BookReader from './components/BookReader';
@@ -29,13 +30,23 @@ const App: React.FC = () => {
   const handleVisitorCounter = async () => {
     if (!isSupabaseConfigured || hasIncrementedRef.current) return;
     hasIncrementedRef.current = true;
+    
     try {
-      const { data, error } = await supabase.rpc('increment_visit');
-      if (error) {
+      // 1. Gửi lệnh tăng lượt truy cập qua RPC
+      const { data, error: rpcError } = await supabase.rpc('increment_visit');
+      
+      if (rpcError) {
+        console.warn("RPC increment_visit failed, falling back to manual fetch.");
+        // 2. Nếu RPC lỗi, cố gắng lấy giá trị hiện tại từ bảng site_stats
         const { data: stats } = await supabase.from('site_stats').select('val').eq('id', 'total_visits').single();
         if (stats) setVisitorCount(stats.val);
-      } else setVisitorCount(data as number);
-    } catch (err) {}
+      } else {
+        // 3. Nếu RPC thành công, cập nhật state bằng dữ liệu trả về
+        setVisitorCount(data as number);
+      }
+    } catch (err) {
+      console.error("Visitor counter error:", err);
+    }
   };
 
   const fetchData = async () => {
@@ -45,7 +56,7 @@ const App: React.FC = () => {
       const { data: catData } = await supabase.from('categories').select('*').order('created_at', { ascending: true });
       setCategories((catData || []).map((c: any) => ({ id: c.id, name: c.name, description: c.description, parentId: c.parent_id })));
 
-      const { data: bookData } = await supabase.from('books').select(`*, chapters (id, title, page_number, url)`).order('upload_date', { ascending: false });
+      const { data: bookData } = await supabase.from('books').select(`*, chapters (id, title, page_number, url, parent_id)`).order('upload_date', { ascending: false });
       setBooks((bookData || []).map((b: any) => ({
         id: b.id,
         title: b.title,
@@ -56,7 +67,13 @@ const App: React.FC = () => {
         categoryId: b.category_id,
         uploadDate: b.upload_date,
         isVisible: b.is_visible,
-        chapters: (b.chapters || []).map((ch: any) => ({ id: ch.id, title: ch.title, pageNumber: ch.page_number, url: ch.url })).sort((a: any, b: any) => a.pageNumber - b.pageNumber)
+        chapters: (b.chapters || []).map((ch: any) => ({ 
+          id: ch.id, 
+          title: ch.title, 
+          pageNumber: ch.page_number, 
+          url: ch.url,
+          parentId: ch.parent_id 
+        })).sort((a: any, b: any) => a.pageNumber - b.pageNumber)
       })));
     } catch (error: any) { setConnectionError(error.message); } finally { setIsLoading(false); }
   };
