@@ -32,20 +32,23 @@ const App: React.FC = () => {
     hasIncrementedRef.current = true;
     
     try {
-      // 1. Gửi lệnh tăng lượt truy cập qua RPC
-      const { data, error: rpcError } = await supabase.rpc('increment_visit');
+      // 1. Cố gắng tăng số lượt truy cập qua RPC (Hàm này phải được tạo trong SQL Editor của Supabase)
+      const { error: rpcError } = await supabase.rpc('increment_visit');
       
-      if (rpcError) {
-        console.warn("RPC increment_visit failed, falling back to manual fetch.");
-        // 2. Nếu RPC lỗi, cố gắng lấy giá trị hiện tại từ bảng site_stats
-        const { data: stats } = await supabase.from('site_stats').select('val').eq('id', 'total_visits').single();
-        if (stats) setVisitorCount(stats.val);
-      } else {
-        // 3. Nếu RPC thành công, cập nhật state bằng dữ liệu trả về
-        setVisitorCount(data as number);
+      // 2. Sau khi tăng (hoặc nếu tăng lỗi), luôn lấy giá trị mới nhất từ bảng site_stats
+      const { data: stats, error: fetchError } = await supabase
+        .from('site_stats')
+        .select('val')
+        .eq('id', 'total_visits')
+        .single();
+
+      if (stats) {
+        setVisitorCount(stats.val);
+      } else if (fetchError) {
+        console.warn("Could not fetch visitor count:", fetchError);
       }
     } catch (err) {
-      console.error("Visitor counter error:", err);
+      console.error("Visitor counter logic error:", err);
     }
   };
 
