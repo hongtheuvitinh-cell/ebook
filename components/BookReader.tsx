@@ -20,6 +20,10 @@ const pdfOptions = {
   cMapUrl: `https://unpkg.com/pdfjs-dist@${PDF_VERSION}/cmaps/`,
   cMapPacked: true,
   standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${PDF_VERSION}/standard_fonts/`,
+  // Tối ưu hóa cho file nặng
+  disableRange: false,
+  disableStream: false,
+  isEvalSupported: true,
 };
 
 const BookReader: React.FC<BookReaderProps> = ({ book }) => {
@@ -41,10 +45,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     });
     
     return roots.sort((a, b) => a.pageNumber - b.pageNumber);
-  }, [book.chapters]);
-
-  const isFlatBook = useMemo(() => {
-    return book.chapters.every(ch => !ch.parentId);
   }, [book.chapters]);
 
   const flattenedReadingList = useMemo(() => {
@@ -75,7 +75,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [numPages, setNumPages] = useState<number>(1); 
   const [scale, setScale] = useState(1.0);
   const [isAIActive, setIsAIActive] = useState(false);
-  const [currentPageText, setCurrentPageText] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -83,13 +82,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
-  const documentRef = useRef<any>(null);
 
   useEffect(() => {
     const rootIds = treeData.filter(n => n.children.length > 0).map(n => n.id);
     setExpandedNodes(new Set(rootIds));
   }, [treeData]);
 
+  // Reset khi đổi sách hoặc tệp
   useEffect(() => {
     const initialItem = flattenedReadingList[0];
     if (initialItem) {
@@ -98,7 +97,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     }
     setCurrentIndex(0);
     setIsLoading(true);
-  }, [book.id, flattenedReadingList, book.url]);
+  }, [book.id]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -110,22 +109,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
   }, [isSidebarOpen, isPresentationMode]);
-
-  useEffect(() => {
-    if (book.contentType === 'pdf') {
-      const activeIdx = flattenedReadingList.reduce((bestIdx, item, idx) => {
-        const itemUrl = item.url || book.url;
-        if (itemUrl === source && item.pageNumber <= pageNumber) {
-          return idx;
-        }
-        return bestIdx;
-      }, currentIndex);
-      
-      if (activeIdx !== currentIndex) {
-        setCurrentIndex(activeIdx);
-      }
-    }
-  }, [pageNumber, source, flattenedReadingList, book.url, book.contentType]);
 
   // --- HANDLERS ---
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -173,13 +156,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     }
   };
 
-  const toggleExpand = (id: string) => {
-    const next = new Set(expandedNodes);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setExpandedNodes(next);
-  };
-
   const selectNode = (node: any) => {
     const idx = flattenedReadingList.findIndex(item => item.id === node.id);
     if (idx !== -1) setCurrentIndex(idx);
@@ -202,7 +178,9 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             style={{ paddingLeft: `${level * 16 + 8}px` }}
             onClick={() => {
               if (hasChildren) {
-                  toggleExpand(node.id);
+                  const next = new Set(expandedNodes);
+                  if (next.has(node.id)) next.delete(node.id); else next.add(node.id);
+                  setExpandedNodes(next);
                   if (node.url) selectNode(node);
               } else {
                   selectNode(node);
@@ -210,26 +188,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             }}
           >
             {hasChildren ? (
-              <span className="shrink-0">
-                {isExpanded ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}
-              </span>
+              <span className="shrink-0">{isExpanded ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}</span>
             ) : (
-              !isFlatBook && (
-                <span className="w-3.5 flex justify-center shrink-0 opacity-40">
-                  <FileText size={12}/>
-                </span>
-              )
+              <span className="w-3.5 flex justify-center shrink-0 opacity-40"><FileText size={12}/></span>
             )}
-            {isFlatBook && isSelected && <div className="w-1 h-3 bg-white rounded-full shrink-0"></div>}
-            <span className={`text-xs truncate ${hasChildren ? 'font-semibold' : 'font-normal'}`}>
-                {node.title}
-            </span>
+            <span className={`text-xs truncate ${hasChildren ? 'font-semibold' : 'font-normal'}`}>{node.title}</span>
           </div>
-          {hasChildren && isExpanded && (
-            <div className="mt-0.5 mb-1 overflow-hidden">
-              {renderTree(node.children, level + 1)}
-            </div>
-          )}
+          {hasChildren && isExpanded && <div className="mt-0.5 mb-1 overflow-hidden">{renderTree(node.children, level + 1)}</div>}
         </div>
       );
     });
@@ -241,17 +206,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         <div className={`bg-[#252525] border-r border-black flex flex-col transition-all duration-300 ${isSidebarOpen ? 'w-72' : 'w-0 overflow-hidden'}`}>
             <div className="p-5 border-b border-gray-800 bg-[#2d2d2d] shrink-0">
                 <div className="flex items-center gap-2 text-indigo-400 mb-1">
-                    {isFlatBook ? <BookIcon size={16} /> : <FolderOpen size={16} />}
-                    <span className="text-[10px] font-bold uppercase tracking-widest">{isFlatBook ? 'Danh sách bài' : 'Mục lục'}</span>
+                    <FolderOpen size={16} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Mục lục</span>
                 </div>
                 <h1 className="font-bold text-white text-sm font-serif line-clamp-2 leading-tight">{book.title}</h1>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-0.5">
-                {book.chapters.length > 0 ? renderTree(treeData) : (
-                   <div className="text-center py-12 text-gray-600 italic text-[10px] uppercase tracking-widest font-bold px-4">
-                       Nội dung đang được cập nhật
-                   </div>
-                )}
+                {renderTree(treeData)}
             </div>
         </div>
       )}
@@ -260,13 +221,11 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         {!isPresentationMode && (
           <div className="h-14 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0">
             <div className="flex items-center gap-2">
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-400 hover:text-white transition-colors" title="Bật/Tắt Menu"><Menu size={18} /></button>
-                <div className="h-6 w-px bg-gray-800 mx-1"></div>
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-400 hover:text-white transition-colors"><Menu size={18} /></button>
                 <div className="flex items-center gap-1 bg-[#252525] px-2 py-1 rounded-lg border border-gray-800">
                     <button onClick={handlePrev} className="p-1 text-gray-400 hover:text-white"><ChevronLeft size={16} /></button>
                     <div className="flex flex-col items-center min-w-[80px]">
                         <span className="text-[10px] text-gray-300 font-mono font-bold leading-none">Trang {pageNumber} / {numPages}</span>
-                        <span className="text-[8px] text-indigo-500 font-bold uppercase mt-0.5">Mục {currentIndex + 1} / {flattenedReadingList.length}</span>
                     </div>
                     <button onClick={handleNext} className="p-1 text-gray-400 hover:text-white"><ChevronRight size={16} /></button>
                 </div>
@@ -277,63 +236,49 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                   <span className="text-[10px] text-gray-500 w-10 text-center font-bold">{Math.round(scale * 100)}%</span>
                   <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-400 hover:text-white"><ZoomIn size={14} /></button>
                </div>
-               <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-400 hover:text-indigo-400 transition-colors" title="Toàn màn hình"><Maximize size={18}/></button>
-               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded-lg transition-all ${isAIActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-white'}`} title="Trợ lý Gemini"><Sparkles size={18} /></button>
+               <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-400 hover:text-indigo-400 transition-colors"><Maximize size={18}/></button>
+               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded-lg transition-all ${isAIActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-white'}`}><Sparkles size={18} /></button>
             </div>
           </div>
         )}
 
         <div ref={containerRef} className={`flex-1 overflow-y-auto relative ${isPresentationMode ? 'bg-black' : 'bg-[#2a2a2a]'} custom-scrollbar`}>
-            {/* Overlay Loading nâng cấp */}
             {isLoading && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a]/80 backdrop-blur-xl transition-all duration-500">
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a]/90 backdrop-blur-xl transition-all duration-500">
                     <div className="relative w-24 h-24 mb-6">
                         <div className="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
                         <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <BookIcon className="text-indigo-400 animate-pulse" size={32} />
-                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center"><BookIcon className="text-indigo-400 animate-pulse" size={32} /></div>
                     </div>
-                    <h3 className="text-white font-black uppercase tracking-[0.3em] text-[11px] mb-2 animate-pulse">Đang nạp dữ liệu tri thức</h3>
-                    <p className="text-gray-500 text-[9px] font-bold uppercase tracking-widest italic">Vui lòng đợi trong giây lát...</p>
+                    <h3 className="text-white font-black uppercase tracking-[0.3em] text-[11px] mb-2">Đang giải nạp tri thức nặng</h3>
+                    <p className="text-gray-500 text-[9px] font-bold uppercase tracking-widest">Hệ thống đang tối ưu hóa bộ nhớ...</p>
                 </div>
             )}
 
             <div className="min-h-full w-full flex items-start justify-center p-8 md:p-12">
-                {book.contentType === 'pdf' ? (
-                  <Document
-                      file={source}
-                      onLoadSuccess={onDocumentLoadSuccess}
-                      onLoadError={(error) => {
-                        console.error("PDF Load Error:", error);
-                        setIsLoading(false);
-                      }}
-                      options={pdfOptions}
-                      inputRef={documentRef}
-                      className="flex justify-center w-full"
-                      loading={null}
-                  >
-                      <PDFPage 
-                        pageNumber={pageNumber} 
-                        width={Math.min(containerSize?.width ? containerSize.width * 0.88 : 600, 1100)} 
-                        scale={scale} 
-                      />
-                  </Document>
-                ) : (
-                  <div className="flex flex-col items-center gap-8" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
-                     <img 
-                        src={source} 
-                        alt="Reading"
-                        className="shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] bg-white max-w-full h-auto rounded-sm border border-white/5"
-                        style={{ width: containerSize ? containerSize.width * 0.88 : 'auto', maxHeight: '85vh', objectFit: 'contain' }}
-                        onLoad={() => { setIsLoading(false); setNumPages(1); }}
-                        onError={() => setIsLoading(false)}
-                     />
-                     <div className="text-indigo-300 text-xs font-black uppercase tracking-[0.4em] bg-indigo-600/10 border border-indigo-500/30 px-8 py-3 rounded-2xl shadow-2xl backdrop-blur-md animate-slide-up">
-                        {flattenedReadingList[currentIndex]?.title}
-                     </div>
-                  </div>
-                )}
+                {/* 
+                  CRITICAL FIX: Thêm key={source} vào Document.
+                  Khi link PDF thay đổi, React sẽ hủy hoàn toàn component Document cũ (giải phóng RAM) 
+                  trước khi tạo cái mới. Điều này ngăn chặn việc 2 file nặng cùng nằm trong RAM.
+                */}
+                <Document
+                    key={source} 
+                    file={source}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={(error) => {
+                      console.error("PDF Load Error:", error);
+                      setIsLoading(false);
+                    }}
+                    options={pdfOptions}
+                    className="flex justify-center w-full"
+                    loading={null}
+                >
+                    <PDFPage 
+                      pageNumber={pageNumber} 
+                      width={Math.min(containerSize?.width ? containerSize.width * 0.88 : 600, 1100)} 
+                      scale={scale} 
+                    />
+                </Document>
             </div>
 
             {isPresentationMode && (
@@ -343,7 +288,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             )}
         </div>
 
-        <AIAssistant isVisible={isAIActive} onClose={() => setIsAIActive(false)} pageText={currentPageText} />
+        <AIAssistant isVisible={isAIActive} onClose={() => setIsAIActive(false)} pageText="" />
       </div>
     </div>
   );
