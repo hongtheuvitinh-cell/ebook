@@ -139,7 +139,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     return () => observer.disconnect();
   }, [isSidebarOpen]);
 
-  // Khi đổi trang, cuộn lại lên đầu
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -151,12 +150,17 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     if (idx !== -1) setCurrentIndex(idx);
     
     const newSource = getDirectUrl(node.url || book.url);
+    
+    // NẾU ĐỔI FILE: Luôn về trang 1
     if (newSource !== source) {
         setSource(newSource);
         setIsLoading(true);
         setLoadError(null);
+        setPageNumber(1); 
+    } else {
+        // CÙNG FILE: Mới nhảy trang theo bookmark
+        setPageNumber(node.pageNumber || 1);
     }
-    setPageNumber(node.pageNumber || 1);
   }, [flattenedReadingList, book.url, source]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -170,20 +174,41 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   };
 
   const handleNext = () => {
-    if (!isImageUrl && pageNumber < numPages) { setPageNumber(prev => prev + 1); return; }
+    // Nếu vẫn còn trang trong file hiện tại, cứ lật tiếp
+    if (!isImageUrl && pageNumber < numPages) { 
+      setPageNumber(prev => prev + 1); 
+      return; 
+    }
+    
+    // Nếu hết trang trong file hiện tại, nhảy sang bài (node) tiếp theo
     if (currentIndex < flattenedReadingList.length - 1) {
-      handleSelectNode(flattenedReadingList[currentIndex + 1]);
+      const nextNode = flattenedReadingList[currentIndex + 1];
+      const nextSource = getDirectUrl(nextNode.url || book.url);
+      
+      // Nếu bài tiếp theo là file mới, ép về trang 1
+      if (nextSource !== source) {
+        setSource(nextSource);
+        setIsLoading(true);
+        setLoadError(null);
+        setPageNumber(1);
+        setCurrentIndex(currentIndex + 1);
+      } else {
+        // Nếu chung file, nhảy đến trang bookmark của node đó
+        handleSelectNode(nextNode);
+      }
     }
   };
 
   const handlePrev = () => {
-    if (!isImageUrl && pageNumber > 1) { setPageNumber(prev => prev - 1); return; }
+    if (!isImageUrl && pageNumber > 1) { 
+      setPageNumber(prev => prev - 1); 
+      return; 
+    }
     if (currentIndex > 0) {
       handleSelectNode(flattenedReadingList[currentIndex - 1]);
     }
   };
 
-  // Tính toán chiều rộng hiển thị tối ưu (mặc định 80% container)
   const bookWidth = useMemo(() => {
     if (!containerSize) return 800;
     return containerSize.width * 0.8;
