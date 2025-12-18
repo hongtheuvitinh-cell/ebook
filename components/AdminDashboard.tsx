@@ -8,7 +8,7 @@ import {
   PlusCircle, LayoutGrid, PencilLine, FilePlus2, ListPlus, CornerDownRight, 
   PlusSquare, ListTree, Link2, Hash, FolderTree, FilePlus, Minus, 
   GitBranch, GitCommit, MoveRight, Eye, EyeOff, CheckCircle2, Send,
-  FileCode, Music, AlertTriangle, ChevronRightCircle
+  FileCode, Music, AlertTriangle, ChevronRightCircle, Save, X as CloseIcon
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
@@ -28,6 +28,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   const [newRootTitle, setNewRootTitle] = useState('');
   const [addingToId, setAddingToId] = useState<string | null>(null);
   const [newChildItem, setNewChildItem] = useState({ title: '', url: '', stt: 0 });
+
+  // State cho việc chỉnh sửa trực tiếp (Inline Editing)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({ title: '', url: '', stt: 0 });
 
   const [newBook, setNewBook] = useState({ title: '', author: '', url: '', categoryId: '', contentType: 'pdf' as any, isVisible: false });
   const [newCategory, setNewCategory] = useState({ name: '', description: '', parentId: '' });
@@ -51,11 +55,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
+  const handleUpdateChapter = async (id: string) => {
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('chapters')
+        .update({
+          title: editFormData.title,
+          url: editFormData.url || null,
+          page_number: editFormData.stt
+        })
+        .eq('id', id);
+      if (error) throw error;
+      setEditingItemId(null);
+      onRefresh();
+    } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
+  };
+
   const toggleVisibility = async (bookId: string, currentStatus: boolean) => {
     setIsProcessing(true);
     try {
-      const { error } = await supabase.from('books').update({ is_visible: !currentStatus }).eq('id', bookId);
-      if (error) throw error;
+      await supabase.from('books').update({ is_visible: !currentStatus }).eq('id', bookId);
       onRefresh();
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
@@ -65,8 +85,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     setIsProcessing(true);
     try {
       await supabase.from('chapters').delete().eq('book_id', id);
-      const { error } = await supabase.from('books').delete().eq('id', id);
-      if (error) throw error;
+      await supabase.from('books').delete().eq('id', id);
       onRefresh();
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
@@ -76,23 +95,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     if (!newCategory.name) return;
     setIsProcessing(true);
     try {
-      const { error } = await supabase.from('categories').insert({
+      await supabase.from('categories').insert({
         name: newCategory.name,
         description: newCategory.description,
         parent_id: newCategory.parentId || null
       });
-      if (error) throw error;
       setNewCategory({ name: '', description: '', parentId: '' });
-      onRefresh();
-    } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
-  };
-
-  const deleteCategory = async (id: string) => {
-    if (!window.confirm("Xóa danh mục này?")) return;
-    setIsProcessing(true);
-    try {
-      const { error } = await supabase.from('categories').delete().eq('id', id);
-      if (error) throw error;
       onRefresh();
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
@@ -136,11 +144,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   };
 
   const deleteChapter = async (id: string) => {
-    if (!window.confirm("Xóa mục này và các mục con của nó?")) return;
+    if (!window.confirm("Xóa mục này và các mục con?")) return;
     setIsProcessing(true);
     try {
-      // Vì Supabase không tự động xóa cascade trừ khi được cấu hình ở DB, ta nên cẩn thận xóa các con trước nếu cần
-      // Ở đây giả định ta xóa đúng ID mục đó
       await supabase.from('chapters').delete().eq('id', id);
       onRefresh();
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
@@ -154,123 +160,154 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     
     if (level === 0 && items.length === 0 && book.chapters.length > 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 bg-red-500/5 rounded-[2rem] border border-red-500/20 px-8 text-center animate-pulse">
-                <AlertTriangle size={48} className="text-red-500 mb-4" />
-                <h6 className="text-red-400 font-black uppercase text-sm tracking-widest">Lỗi cấu trúc cha-con</h6>
-                <p className="text-gray-500 text-xs mt-2 max-w-xs">Dữ liệu có bài viết nhưng không tìm thấy Chương Gốc để bắt đầu. Hãy tạo một Chương Gốc mới.</p>
+            <div className="flex flex-col items-center justify-center py-16 bg-red-500/5 rounded-[2.5rem] border border-red-500/20 px-8 text-center">
+                <AlertTriangle size={40} className="text-red-500 mb-4" />
+                <p className="text-gray-500 text-[11px] font-bold uppercase tracking-widest">Dữ liệu mồ côi (Không tìm thấy chương gốc)</p>
             </div>
         );
     }
 
     return (
-      <div className={`flex flex-col gap-4 ${level > 0 ? 'ml-12 border-l-2 border-indigo-500/20 pl-10 my-2 relative' : ''}`}>
-        {items.map((item, index) => {
-          const hasChildren = book.chapters.some(c => c.parentId === item.id);
+      <div className={`flex flex-col gap-4 ${level > 0 ? 'ml-10 border-l-2 border-dashed border-indigo-500/20 pl-8 my-2' : ''}`}>
+        {items.map((item) => {
+          const isEditing = editingItemId === item.id;
           
           return (
             <div key={item.id} className="relative group">
-              {/* Đường kẻ ngang "hình chữ L" */}
-              {level > 0 && (
-                <div className="absolute -left-10 top-1/2 -translate-y-1/2 w-10 h-0.5 bg-indigo-500/30 group-hover:bg-indigo-500 transition-colors"></div>
-              )}
-              
+              {/* Box chứa thông tin mục */}
               <div className={`
                 flex items-center justify-between p-4 rounded-2xl border transition-all duration-300
                 ${level === 0 
-                  ? 'bg-gradient-to-r from-indigo-600/20 to-indigo-600/5 border-indigo-500/50 shadow-lg' 
-                  : level === 1 
-                  ? 'bg-[#1a1a1a] border-white/10 hover:border-indigo-500/40'
-                  : 'bg-[#111] border-white/5 opacity-80 hover:opacity-100'}
-                ${addingToId === item.id ? 'ring-2 ring-indigo-500 bg-indigo-500/10 scale-[1.01]' : ''}
+                  ? 'bg-gradient-to-r from-indigo-600/10 to-transparent border-indigo-500/40 shadow-lg' 
+                  : level === 1
+                  ? 'bg-[#1a1a1a] border-white/10 hover:border-indigo-500/30'
+                  : 'bg-[#111] border-white/5 opacity-80'}
+                ${isEditing ? 'ring-2 ring-yellow-500/50 border-yellow-500 bg-yellow-500/5' : ''}
               `}>
-                <div className="flex items-center gap-4">
+                
+                {/* Phần hiển thị / Form sửa */}
+                <div className="flex items-center gap-4 flex-1">
                   <div className={`
-                    w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black shadow-xl shrink-0
-                    ${level === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-indigo-400 border border-white/5'}
+                    w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black shrink-0
+                    ${level === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-indigo-400'}
                   `}>
-                    {item.pageNumber}
+                    {isEditing ? (
+                        <input 
+                            type="number" 
+                            className="w-full bg-transparent text-center outline-none" 
+                            value={editFormData.stt} 
+                            onChange={e => setEditFormData({...editFormData, stt: parseInt(e.target.value) || 0})}
+                        />
+                    ) : item.pageNumber}
                   </div>
-                  <div>
-                    <h5 className={`tracking-tight ${level === 0 ? 'text-base font-black text-white uppercase' : 'text-sm font-bold text-gray-300'}`}>
-                      {item.title}
-                    </h5>
-                    {item.url && (
-                      <div className="flex items-center gap-1 mt-1 text-indigo-400/50">
-                        <Link2 size={10} />
-                        <span className="text-[9px] font-mono truncate max-w-[200px]">{item.url}</span>
+                  
+                  <div className="flex-1">
+                    {isEditing ? (
+                      <div className="flex flex-col gap-2">
+                         <input 
+                            type="text" 
+                            className="bg-[#0d0d0d] border border-white/10 rounded-lg p-2 text-xs text-white outline-none focus:border-yellow-500 w-full"
+                            value={editFormData.title}
+                            onChange={e => setEditFormData({...editFormData, title: e.target.value})}
+                         />
+                         <input 
+                            type="text" 
+                            placeholder="Link tài liệu..."
+                            className="bg-[#0d0d0d] border border-white/10 rounded-lg p-2 text-[10px] text-gray-400 outline-none focus:border-yellow-500 w-full"
+                            value={editFormData.url}
+                            onChange={e => setEditFormData({...editFormData, url: e.target.value})}
+                         />
                       </div>
+                    ) : (
+                      <>
+                        <h5 className={`tracking-tight ${level === 0 ? 'text-sm font-black text-white' : 'text-xs font-bold text-gray-300'}`}>
+                          {item.title}
+                        </h5>
+                        {item.url && (
+                          <div className="flex items-center gap-1 mt-1 text-indigo-400/50 text-[9px] font-mono">
+                            <Link2 size={10} /> <span className="truncate max-w-[200px]">{item.url}</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Nút THÊM xuất hiện ở MỌI CẤP ĐỘ */}
-                  <button 
-                    onClick={() => {
-                        setAddingToId(addingToId === item.id ? null : item.id);
-                        const subItems = book.chapters.filter(c => c.parentId === item.id);
-                        setNewChildItem({ ...newChildItem, stt: subItems.length + 1 });
-                    }}
-                    className={`
-                      p-2 rounded-xl transition-all border
-                      ${addingToId === item.id 
-                        ? 'bg-white text-indigo-600 border-white' 
-                        : 'bg-indigo-600/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-600 hover:text-white'}
-                    `}
-                    title="Thêm mục con cho mục này"
-                  >
-                    {addingToId === item.id ? <Minus size={16} /> : <Plus size={16} />}
-                  </button>
-                  <button onClick={() => deleteChapter(item.id)} className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"><Trash2 size={16}/></button>
+                {/* Các nút điều khiển */}
+                <div className="flex items-center gap-2 ml-4">
+                  {isEditing ? (
+                    <>
+                      <button onClick={() => handleUpdateChapter(item.id)} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-500" title="Lưu thay đổi"><Save size={14} /></button>
+                      <button onClick={() => setEditingItemId(null)} className="p-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600" title="Hủy"><CloseIcon size={14} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => {
+                            setAddingToId(addingToId === item.id ? null : item.id);
+                            const subItems = book.chapters.filter(c => c.parentId === item.id);
+                            setNewChildItem({ title: '', url: '', stt: subItems.length + 1 });
+                        }}
+                        className={`p-2 rounded-lg transition-all border ${addingToId === item.id ? 'bg-white text-indigo-600' : 'bg-indigo-600/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-600 hover:text-white'}`}
+                        title="Thêm mục con"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setEditingItemId(item.id);
+                          setEditFormData({ title: item.title, url: item.url || '', stt: item.pageNumber });
+                        }}
+                        className="p-2 text-gray-500 hover:text-yellow-500 hover:bg-yellow-500/10 rounded-lg transition-all"
+                        title="Sửa"
+                      >
+                        <PencilLine size={14} />
+                      </button>
+                      <button onClick={() => deleteChapter(item.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all" title="Xóa"><Trash2 size={14}/></button>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* FORM NHẬP BÀI MỚI (CHÁU, CHẮT...) */}
+              {/* Form thêm mục con (Xuất hiện ngay dưới mục cha) */}
               {addingToId === item.id && (
-                <div className="ml-10 mt-3 p-6 bg-indigo-600/5 border-2 border-indigo-500/20 rounded-3xl animate-slide-up shadow-2xl relative z-30">
-                  <div className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">
-                    <CornerDownRight size={14} /> Thêm mục con của: <span className="text-white ml-1">{item.title}</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                    <div className="md:col-span-5">
-                      <input 
-                        type="text" 
-                        placeholder="Tiêu đề mục..." 
-                        value={newChildItem.title}
-                        onChange={e => setNewChildItem({...newChildItem, title: e.target.value})}
-                        className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs text-white focus:border-indigo-500 outline-none"
-                      />
-                    </div>
-                    <div className="md:col-span-4">
-                      <input 
-                        type="text" 
-                        placeholder="Link tài liệu (Tùy chọn)..." 
-                        value={newChildItem.url}
-                        onChange={e => setNewChildItem({...newChildItem, url: e.target.value})}
-                        className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs text-white focus:border-indigo-500 outline-none"
-                      />
-                    </div>
-                    <div className="md:col-span-1">
-                      <input 
-                        type="number" 
-                        value={newChildItem.stt}
-                        onChange={e => setNewChildItem({...newChildItem, stt: parseInt(e.target.value) || 0})}
-                        className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs text-white text-center font-bold"
-                      />
-                    </div>
-                    <div className="md:col-span-2 flex items-end">
-                      <button 
-                        onClick={() => handleAddChildItem(book.id)}
-                        className="w-full h-[42px] bg-indigo-600 text-white font-black rounded-xl text-[9px] uppercase tracking-widest hover:bg-indigo-500 transition-all"
-                      >
-                        LƯU LẠI
-                      </button>
-                    </div>
-                  </div>
+                <div className="ml-10 mt-3 p-5 bg-indigo-600/5 border border-indigo-500/30 rounded-2xl animate-slide-up shadow-xl relative z-10">
+                   <div className="flex items-center gap-2 text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-4">
+                      <CornerDownRight size={14} /> Thêm bài cho: <span className="text-white italic">{item.title}</span>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-5">
+                        <input 
+                          type="text" placeholder="Tên bài mới..." 
+                          value={newChildItem.title}
+                          onChange={e => setNewChildItem({...newChildItem, title: e.target.value})}
+                          className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs text-white focus:border-indigo-500 outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-4">
+                        <input 
+                          type="text" placeholder="Link PDF (Tùy chọn)..." 
+                          value={newChildItem.url}
+                          onChange={e => setNewChildItem({...newChildItem, url: e.target.value})}
+                          className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs text-white focus:border-indigo-500 outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-1">
+                        <input 
+                          type="number" 
+                          value={newChildItem.stt}
+                          onChange={e => setNewChildItem({...newChildItem, stt: parseInt(e.target.value) || 0})}
+                          className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs text-white text-center font-bold"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <button onClick={() => handleAddChildItem(book.id)} className="w-full h-full bg-indigo-600 text-white font-black rounded-xl text-[9px] uppercase tracking-widest hover:bg-indigo-500 transition-all">LƯU BÀI</button>
+                      </div>
+                   </div>
                 </div>
               )}
 
-              {/* Đệ quy hiển thị các con (Cấp độ tiếp theo) */}
+              {/* Đệ quy vẽ tiếp các cấp con */}
               {renderTreeDiagram(book, item.id, level + 1)}
             </div>
           );
@@ -281,203 +318,124 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
 
   return (
     <div className="container mx-auto px-4 py-8 text-white max-w-6xl min-h-screen">
-      {/* HEADER SECTION */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
         <div className="flex items-center gap-6 group">
           <div className="w-16 h-16 bg-indigo-600 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-indigo-600/40 group-hover:rotate-6 transition-transform duration-500">
             <LayoutGrid size={32} className="text-white" />
           </div>
           <div>
-            <h1 className="text-4xl font-black text-white tracking-tighter italic uppercase">Admin Dashboard</h1>
-            <p className="text-indigo-400/60 text-[10px] font-black uppercase tracking-[0.5em] mt-0.5">Xây dựng & Quản lý tri thức số</p>
+            <h1 className="text-4xl font-black text-white tracking-tighter italic uppercase">Admin Console</h1>
+            <p className="text-indigo-400/60 text-[10px] font-black uppercase tracking-[0.5em] mt-0.5">Xây dựng cây thư mục tri thức</p>
           </div>
         </div>
         <div className="flex bg-[#2a2a2a] p-1.5 rounded-2xl border border-white/5 shadow-2xl">
-            <button onClick={() => setActiveTab('books')} className={`flex items-center gap-2 px-8 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'books' ? 'bg-indigo-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>
-                Sách & Mục lục
-            </button>
-            <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-8 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'categories' ? 'bg-indigo-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>
-                Danh mục
-            </button>
+            <button onClick={() => setActiveTab('books')} className={`flex items-center gap-2 px-8 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'books' ? 'bg-indigo-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>Tác phẩm & Mục lục</button>
+            <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-8 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'categories' ? 'bg-indigo-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>Danh mục</button>
         </div>
       </div>
 
       {isProcessing && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center">
-            <div className="bg-[#1a1a1a] p-14 rounded-[3.5rem] border border-indigo-500/30 flex flex-col items-center gap-6 shadow-2xl scale-110">
-                <Loader2 className="animate-spin text-indigo-500" size={64} />
-                <span className="text-[11px] font-black text-indigo-300 uppercase tracking-[0.5em]">Đang đồng bộ dữ liệu...</span>
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center">
+            <div className="bg-[#1a1a1a] p-10 rounded-[2.5rem] border border-indigo-500/30 flex flex-col items-center gap-4 shadow-2xl">
+                <Loader2 className="animate-spin text-indigo-500" size={48} />
+                <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Đang cập nhật hệ thống...</span>
             </div>
         </div>
       )}
 
       {activeTab === 'books' && (
         <div className="space-y-12 animate-slide-up">
-          {/* FORM NHẬP SÁCH MỚI */}
-          <div className="bg-gradient-to-br from-[#2a2a2a] to-[#151515] p-10 rounded-[3rem] border border-white/5 shadow-2xl relative overflow-hidden group">
-            <div className="absolute -top-32 -right-32 w-80 h-80 bg-indigo-600/5 rounded-full blur-[100px] group-hover:bg-indigo-600/10 transition-all duration-700"></div>
-            <h2 className="text-[12px] font-black mb-10 uppercase tracking-[0.6em] text-indigo-400 flex items-center gap-4">
-              <PlusCircle size={22} /> Khởi tạo tác phẩm
-              <div className="h-px flex-1 bg-white/5"></div>
+          {/* FORM NHẬP SÁCH */}
+          <div className="bg-[#222] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+            <h2 className="text-[11px] font-black mb-8 uppercase tracking-[0.4em] text-indigo-400 flex items-center gap-3">
+              <PlusSquare size={20} /> Khởi tạo sách mới
             </h2>
-            <form onSubmit={handleAddBook} className="grid grid-cols-1 md:grid-cols-12 gap-8 relative z-10">
-              <div className="md:col-span-4 space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tiêu đề chính</label>
-                <input type="text" value={newBook.title} onChange={e => setNewBook({...newBook, title: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="Tên tác phẩm..." required />
+            <form onSubmit={handleAddBook} className="grid grid-cols-1 md:grid-cols-12 gap-6">
+              <div className="md:col-span-4 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Tên sách</label>
+                <input type="text" value={newBook.title} onChange={e => setNewBook({...newBook, title: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white focus:border-indigo-500 outline-none" required />
               </div>
-              <div className="md:col-span-4 space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tác giả</label>
-                <input type="text" value={newBook.author} onChange={e => setNewBook({...newBook, author: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="Tác giả / Nhà XB..." />
+              <div className="md:col-span-3 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Tác giả</label>
+                <input type="text" value={newBook.author} onChange={e => setNewBook({...newBook, author: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white focus:border-indigo-500 outline-none" />
               </div>
-              <div className="md:col-span-4 space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Danh mục</label>
-                <select value={newBook.categoryId} onChange={e => setNewBook({...newBook, categoryId: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner">
-                  <option value="">-- Chọn danh mục --</option>
+              <div className="md:col-span-3 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Danh mục</label>
+                <select value={newBook.categoryId} onChange={e => setNewBook({...newBook, categoryId: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white outline-none">
+                  <option value="">-- Chọn --</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div className="md:col-span-6 space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Link2 size={12}/> Link PDF Tổng quát</label>
-                <input type="text" value={newBook.url} onChange={e => setNewBook({...newBook, url: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="https://drive.google.com/..." required />
-              </div>
-              <div className="md:col-span-2 space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><FileCode size={12}/> Loại tệp</label>
-                <select value={newBook.contentType} onChange={e => setNewBook({...newBook, contentType: e.target.value as any})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm font-black text-indigo-400 uppercase outline-none shadow-inner">
-                  <option value="pdf">PDF</option>
-                  <option value="image">Hình ảnh</option>
-                  <option value="audio">Âm thanh</option>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Trạng thái</label>
+                <select value={newBook.isVisible ? "true" : "false"} onChange={e => setNewBook({...newBook, isVisible: e.target.value === "true"})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white outline-none">
+                  <option value="false">Bản nháp</option>
+                  <option value="true">Công bố</option>
                 </select>
               </div>
-              <div className="md:col-span-2 space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Eye size={12}/> Trạng thái</label>
-                <select value={newBook.isVisible ? "true" : "false"} onChange={e => setNewBook({...newBook, isVisible: e.target.value === "true"})} className={`w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm font-black uppercase outline-none shadow-inner ${newBook.isVisible ? 'text-green-400' : 'text-orange-400'}`}>
-                  <option value="false" className="bg-[#1a1a1a] text-orange-400">Bản nháp (Ẩn)</option>
-                  <option value="true" className="bg-[#1a1a1a] text-green-400">Công bố ngay</option>
-                </select>
+              <div className="md:col-span-10 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Link PDF Tổng quát</label>
+                <input type="text" value={newBook.url} onChange={e => setNewBook({...newBook, url: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white focus:border-indigo-500 outline-none" required />
               </div>
               <div className="md:col-span-2 flex items-end">
-                <button type="submit" className="w-full bg-indigo-600 h-[66px] rounded-2xl font-black text-[12px] uppercase tracking-[0.4em] shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 transition-all active:scale-95">LƯU SÁCH</button>
+                <button type="submit" className="w-full h-[54px] bg-indigo-600 rounded-xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-indigo-500 transition-all">Lưu sách</button>
               </div>
             </form>
           </div>
 
-          {/* LIST BOOKS & TREE MANAGER */}
-          <div className="space-y-8">
-            <h3 className="text-gray-500 text-[10px] font-black uppercase tracking-[0.8em] ml-2 flex items-center gap-5">
-              DANH SÁCH TÁC PHẨM HIỆN CÓ
-              <div className="h-px flex-1 bg-white/5"></div>
-            </h3>
-            
+          {/* DANH SÁCH SÁCH */}
+          <div className="space-y-6">
             {books.map(book => (
-              <div key={book.id} className={`bg-[#252525] border rounded-[3rem] overflow-hidden transition-all hover:border-indigo-500/30 shadow-2xl group ${!book.isVisible ? 'border-orange-500/10' : 'border-white/5'}`}>
-                <div className="p-10 flex flex-col md:flex-row items-center justify-between gap-10">
-                  <div className="flex items-center gap-8 w-full md:w-auto">
-                    <div className={`w-24 h-28 bg-[#1a1a1a] rounded-3xl flex flex-col items-center justify-center border border-white/5 shadow-inner transition-transform group-hover:scale-110 duration-500 ${!book.isVisible ? 'text-orange-400/60' : 'text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white'}`}>
-                      {book.contentType === 'pdf' ? <PdfIcon size={40}/> : book.contentType === 'image' ? <ImageIcon size={40}/> : <Headphones size={40}/>}
-                      <span className="text-[8px] font-black mt-2 tracking-widest uppercase">{book.contentType}</span>
+              <div key={book.id} className="bg-[#1a1a1a] border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl">
+                <div className="p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-20 bg-gray-800 rounded-2xl flex items-center justify-center text-indigo-400 border border-white/5">
+                      <BookOpen size={28} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h4 className="text-3xl font-black text-white group-hover:text-indigo-200 transition-colors tracking-tighter leading-none">{book.title}</h4>
-                        {!book.isVisible ? (
-                          <span className="bg-orange-500/10 text-orange-500 border border-orange-500/20 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1.5">
-                            <EyeOff size={10} /> Bản nháp
-                          </span>
-                        ) : (
-                          <span className="bg-green-500/10 text-green-500 border border-green-500/20 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1.5">
-                            <CheckCircle2 size={10} /> Đã công bố
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-500 font-black uppercase tracking-[0.4em]">{book.author} • <span className="text-indigo-500">{book.chapters.length} mục dữ liệu</span></p>
+                      <h4 className="text-xl font-black text-white">{book.title}</h4>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{book.author} • {book.chapters.length} mục dữ liệu</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex gap-3">
                     <button 
-                      onClick={() => toggleVisibility(book.id, book.isVisible)}
-                      className={`p-5 rounded-2xl transition-all flex items-center gap-3 border ${book.isVisible ? 'bg-orange-500/10 border-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white' : 'bg-green-600 border-green-500 text-white hover:bg-green-500 shadow-xl shadow-green-600/20'}`}
-                      title={book.isVisible ? "Gỡ bỏ khỏi thư viện" : "Công bố ra thư viện"}
+                      onClick={() => setEditingChaptersBookId(editingChaptersBookId === book.id ? null : book.id)}
+                      className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingChaptersBookId === book.id ? 'bg-indigo-600 text-white shadow-xl' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
                     >
-                      {book.isVisible ? <><EyeOff size={24}/> <span className="text-[10px] font-black uppercase">GỠ BỎ</span></> : <><Send size={24}/> <span className="text-[10px] font-black uppercase">CÔNG BỐ</span></>}
+                      {editingChaptersBookId === book.id ? 'Đóng mục lục' : 'Quản lý mục lục'}
                     </button>
-
-                    <button 
-                      onClick={() => {
-                        setEditingChaptersBookId(editingChaptersBookId === book.id ? null : book.id);
-                        setAddingToId(null);
-                      }}
-                      className={`px-10 py-5 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] border transition-all flex items-center gap-3 ${editingChaptersBookId === book.id ? 'bg-indigo-600 text-white border-indigo-500 shadow-2xl' : 'bg-[#333] text-gray-400 border-white/5 hover:text-white hover:bg-gray-700'}`}
-                    >
-                      {editingChaptersBookId === book.id ? <><ChevronDown size={18}/> ĐÓNG</> : <><ListTree size={18}/> BIÊN TẬP CÂY</>}
-                    </button>
-                    <button onClick={() => deleteBook(book.id)} className="p-6 text-gray-700 hover:text-red-500 hover:bg-red-500/10 rounded-2xl transition-all"><Trash2 size={32}/></button>
+                    <button onClick={() => deleteBook(book.id)} className="p-3 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"><Trash2 size={20}/></button>
                   </div>
                 </div>
 
-                {/* --- KHU VỰC HIỂN THỊ SƠ ĐỒ CÂY --- */}
                 {editingChaptersBookId === book.id && (
-                  <div className="p-12 bg-[#0a0a0a] border-t border-white/5 animate-slide-up">
-                    <div className="max-w-5xl mx-auto space-y-16">
-                      
-                      {!book.isVisible && (
-                        <div className="bg-orange-500/5 border border-orange-500/20 p-6 rounded-[2.5rem] flex items-center gap-6 animate-pulse">
-                            <div className="w-12 h-12 bg-orange-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg">
-                                <Info size={24} />
-                            </div>
-                            <div>
-                                <h6 className="text-orange-400 font-black text-sm uppercase tracking-widest">Đang biên tập Bản nháp</h6>
-                                <p className="text-[11px] text-gray-500 mt-1 font-medium">Bạn có thể xây dựng cây mục lục nhiều cấp độ. Sau khi hoàn tất, hãy nhấn nút <b>"CÔNG BỐ"</b> màu xanh phía trên.</p>
-                            </div>
-                        </div>
-                      )}
-
-                      <div className="bg-indigo-600/5 p-10 rounded-[3.5rem] border border-indigo-500/10 shadow-inner relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-10 opacity-[0.03] pointer-events-none rotate-12">
-                            <GitBranch size={160} />
-                        </div>
-                        <h5 className="text-[12px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-4">
-                           <PlusSquare size={20} /> Bước 1: Tạo các Chương Gốc (Cấp cao nhất)
-                        </h5>
-                        <div className="flex gap-5">
-                          <input 
-                            type="text" 
-                            placeholder="VD: Chương 1: Giới thiệu..." 
-                            value={newRootTitle}
-                            onChange={e => setNewRootTitle(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleAddRootChapter(book.id)}
-                            className="flex-1 bg-[#111] border border-white/10 rounded-3xl p-6 text-sm text-white focus:border-indigo-500 outline-none shadow-2xl"
-                          />
-                          <button 
-                            onClick={() => handleAddRootChapter(book.id)}
-                            className="bg-indigo-600 px-12 rounded-3xl font-black text-[11px] uppercase tracking-widest hover:bg-indigo-500 shadow-xl shadow-indigo-600/20 active:scale-95 transition-all"
-                          >
-                            THÊM CHƯƠNG GỐC
-                          </button>
-                        </div>
+                  <div className="p-8 bg-[#0d0d0d] border-t border-white/5 animate-slide-up">
+                    <div className="max-w-4xl mx-auto space-y-12">
+                      {/* Thêm chương gốc */}
+                      <div className="bg-indigo-600/5 p-8 rounded-[2rem] border border-indigo-500/20">
+                         <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
+                           <ListPlus size={18} /> Bước 1: Tạo các Chương Chính
+                         </h5>
+                         <div className="flex gap-4">
+                            <input 
+                              type="text" placeholder="Nhập tên chương (VD: Chương 1...)" 
+                              value={newRootTitle}
+                              onChange={e => setNewRootTitle(e.target.value)}
+                              className="flex-1 bg-black border border-white/10 rounded-xl p-4 text-xs text-white focus:border-indigo-500 outline-none shadow-inner"
+                            />
+                            <button onClick={() => handleAddRootChapter(book.id)} className="bg-indigo-600 px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-500 shadow-xl transition-all">Thêm Chương Gốc</button>
+                         </div>
                       </div>
 
-                      <div className="space-y-8">
-                        <div className="flex items-center justify-between px-6">
-                            <h5 className="text-[13px] font-black text-white uppercase tracking-[0.5em] flex items-center gap-4">
-                                <ListTree size={20} className="text-indigo-500" /> SƠ ĐỒ CÂY TRI THỨC ĐA CẤP
-                                <div className="h-px w-32 bg-indigo-500/20"></div>
-                            </h5>
-                        </div>
-
-                        <div className="bg-[#111] p-12 rounded-[4rem] border border-white/5 min-h-[500px] shadow-inner relative overflow-hidden">
-                          <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #6366f1 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
-                          
-                          <div className="relative z-10">
-                            {book.chapters.length === 0 ? (
-                                <div className="text-center py-40 flex flex-col items-center justify-center">
-                                    <div className="w-24 h-24 bg-gray-900 rounded-full flex items-center justify-center text-gray-800 border border-white/5 mb-8">
-                                        <Minus size={48} />
-                                    </div>
-                                    <p className="text-gray-700 font-black uppercase tracking-[0.5em] text-[13px]">CHƯA CÓ DỮ LIỆU CÂY</p>
-                                </div>
-                            ) : renderTreeDiagram(book)}
-                          </div>
-                        </div>
+                      {/* Sơ đồ cây */}
+                      <div className="space-y-6">
+                         <h5 className="text-[11px] font-black text-white uppercase tracking-[0.5em] flex items-center gap-4">
+                            <ListTree size={20} className="text-indigo-500" /> Sơ đồ cây đa tầng (Cha - Con - Cháu)
+                         </h5>
+                         <div className="bg-black/40 p-10 rounded-[3rem] border border-white/5 min-h-[300px]">
+                            {renderTreeDiagram(book)}
+                         </div>
                       </div>
                     </div>
                   </div>
@@ -488,44 +446,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
         </div>
       )}
 
-      {/* TAB DANH MỤC */}
+      {/* DANH MỤC TAB */}
       {activeTab === 'categories' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 animate-slide-up">
             <div className="lg:col-span-1">
-                <div className="bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] p-10 rounded-[3rem] border-2 border-indigo-500/20 shadow-2xl sticky top-8">
-                    <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white mb-10 flex items-center gap-4">
-                        <FolderPlus size={24} className="text-indigo-400" /> Quản lý phân loại
-                    </h2>
-                    <form onSubmit={handleAddCategory} className="space-y-8">
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tên danh mục</label>
-                            <input type="text" value={newCategory.name} onChange={e => setNewCategory({...newCategory, name: e.target.value})} className="w-full bg-[#111] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="VD: Lịch sử, IT..." required />
+                <div className="bg-[#222] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl sticky top-8">
+                    <h2 className="text-xs font-black uppercase tracking-[0.3em] text-white mb-8 flex items-center gap-3"><FolderPlus size={20} className="text-indigo-400" /> Tạo danh mục</h2>
+                    <form onSubmit={handleAddCategory} className="space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Tên danh mục</label>
+                            <input type="text" value={newCategory.name} onChange={e => setNewCategory({...newCategory, name: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white outline-none" required />
                         </div>
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Phân cấp cha</label>
-                            <select value={newCategory.parentId} onChange={e => setNewCategory({...newCategory, parentId: e.target.value})} className="w-full bg-[#111] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner">
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Cấp cha (Tùy chọn)</label>
+                            <select value={newCategory.parentId} onChange={e => setNewCategory({...newCategory, parentId: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white outline-none">
                                 <option value="">-- Cấp cao nhất --</option>
                                 {categories.filter(c => !c.parentId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
-                        <button type="submit" className="w-full bg-indigo-600 py-6 rounded-2xl font-black hover:bg-indigo-500 transition-all text-[11px] tracking-[0.5em] shadow-xl shadow-indigo-600/30 active:scale-95">Cập Nhật Danh Mục</button>
+                        <button type="submit" className="w-full bg-indigo-600 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-500 shadow-xl transition-all">Lưu danh mục</button>
                     </form>
                 </div>
             </div>
-            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                 {categories.map(cat => (
-                    <div key={cat.id} className="bg-gradient-to-br from-[#2a2a2a] to-[#1e1e1e] p-8 rounded-[3rem] border border-white/5 hover:border-indigo-500/40 transition-all group shadow-2xl relative overflow-hidden">
-                        <div className="flex justify-between items-start mb-10 relative z-10">
-                            <div className="p-5 bg-indigo-600/10 text-indigo-400 rounded-3xl group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-inner">
-                                <Folder size={32} />
-           a                 </div>
-                            <button onClick={() => deleteCategory(cat.id)} className="p-3 text-gray-700 hover:text-red-400 hover:bg-red-400/10 rounded-2xl transition-all"><Trash2 size={24} /></button>
+                    <div key={cat.id} className="bg-[#222] p-6 rounded-[2rem] border border-white/5 flex justify-between items-center group shadow-xl">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all"><Folder size={24} /></div>
+                            <span className="font-bold text-sm">{cat.name}</span>
                         </div>
-                        <div className="relative z-10">
-                            <h4 className="font-black text-white text-2xl mb-2 group-hover:text-indigo-200 transition-colors tracking-tight">{cat.name}</h4>
-                            <p className="text-[10px] text-indigo-500 font-black uppercase tracking-[0.4em]">Kiến trúc tri thức</p>
-                        </div>
-                        <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-indigo-600/5 rounded-full blur-3xl group-hover:bg-indigo-600/10 transition-colors"></div>
+                        <button onClick={() => deleteCategory(cat.id)} className="p-2 text-gray-600 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
                     </div>
                 ))}
             </div>
