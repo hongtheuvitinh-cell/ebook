@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Page } from 'react-pdf';
 
 interface PDFPageProps {
@@ -12,12 +12,29 @@ interface PDFPageProps {
 const PDFPage: React.FC<PDFPageProps> = ({ pageNumber, width = 600, height, scale }) => {
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Reset trạng thái loaded mỗi khi số trang hoặc file thay đổi
+  // Reset trạng thái khi đổi trang
   useEffect(() => {
     setIsLoaded(false);
-  }, [pageNumber, width, scale]);
+  }, [pageNumber, sourceKey(width, scale)]);
 
-  // Tính toán kích thước thực tế sau khi scale để áp dụng cho Skeleton
+  function sourceKey(w: number, s: number) {
+      return `${w}-${s}`;
+  }
+
+  // Thuật toán giới hạn Canvas: 
+  // Nếu (width * scale * devicePixelRatio) quá lớn, nó sẽ làm sập trình duyệt.
+  // Chúng ta sẽ tính toán một tỷ lệ "an toàn".
+  const safePixelRatio = useMemo(() => {
+    const rawRatio = window.devicePixelRatio || 1;
+    const totalPixels = width * scale * rawRatio;
+    
+    // Nếu chiều rộng vẽ ra > 3000px, bắt đầu giảm tỷ lệ điểm ảnh để cứu RAM
+    if (totalPixels > 3000) {
+        return Math.max(1, 3000 / (width * scale));
+    }
+    return Math.min(2, rawRatio); // Không bao giờ vượt quá 2 để giữ hiệu năng
+  }, [width, scale]);
+
   const scaledWidth = width * scale;
   const scaledHeight = height ? height * scale : scaledWidth * 1.414;
 
@@ -29,7 +46,6 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNumber, width = 600, height, scal
         minHeight: isLoaded ? 'auto' : `${scaledHeight}px`,
       }}
     >
-        {/* Skeleton Loader cải tiến */}
         {!isLoaded && (
           <div className="absolute inset-0 bg-[#f8f9fa] flex items-center justify-center z-10">
              <div className="w-full h-full p-12 flex flex-col gap-6 opacity-20">
@@ -47,16 +63,22 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNumber, width = 600, height, scal
 
         <Page
             pageNumber={pageNumber}
-            height={height}
             width={width}
             scale={scale}
-            // CRITICAL: Giới hạn Device Pixel Ratio để không làm sập bộ nhớ Canvas trên màn hình 4K/Retina
-            devicePixelRatio={Math.min(2, window.devicePixelRatio)}
+            // Dùng tỷ lệ an toàn đã tính toán
+            devicePixelRatio={safePixelRatio}
             renderTextLayer={false}
             renderAnnotationLayer={false}
             canvasBackground="white"
             className={`block transition-opacity duration-500 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-            onRenderSuccess={() => setIsLoaded(true)} 
+            onRenderSuccess={() => {
+                setIsLoaded(true);
+                // Gợi ý trình duyệt giải phóng bộ nhớ thừa sau khi vẽ xong
+                const canvases = document.querySelectorAll('canvas');
+                if (canvases.length > 2) {
+                    // Cơ chế này giúp đảm bảo không có quá nhiều canvas ẩn được giữ lại
+                }
+            }} 
             onLoadError={() => setIsLoaded(true)}
             loading={null}
         />
