@@ -72,7 +72,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [source, setSource] = useState<string>(book.url);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [numPages, setNumPages] = useState<number>(1); // Tổng số trang của file hiện tại
+  const [numPages, setNumPages] = useState<number>(1); 
   const [scale, setScale] = useState(1.0);
   const [isAIActive, setIsAIActive] = useState(false);
   const [currentPageText, setCurrentPageText] = useState<string>('');
@@ -111,10 +111,8 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, [isSidebarOpen, isPresentationMode]);
 
-  // Tự động cập nhật currentIndex khi pageNumber thay đổi (dành cho PDF dùng chung 1 file)
   useEffect(() => {
     if (book.contentType === 'pdf') {
-      // Tìm chương phù hợp nhất với trang hiện tại
       const activeIdx = flattenedReadingList.reduce((bestIdx, item, idx) => {
         const itemUrl = item.url || book.url;
         if (itemUrl === source && item.pageNumber <= pageNumber) {
@@ -137,19 +135,15 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const handleNext = () => {
     if (book.contentType === 'pdf') {
-      // 1. Kiểm tra xem có trang tiếp theo trong file hiện tại không
       if (pageNumber < numPages) {
         setPageNumber(prev => prev + 1);
         return;
       }
     }
-
-    // 2. Nếu đã hết trang hoặc không phải PDF, chuyển sang mục (Chapter) tiếp theo
     if (currentIndex < flattenedReadingList.length - 1) {
       const nextIdx = currentIndex + 1;
       const item = flattenedReadingList[nextIdx];
       setCurrentIndex(nextIdx);
-      
       if (item.url && item.url !== source) {
         setSource(item.url);
         setIsLoading(true);
@@ -160,24 +154,18 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const handlePrev = () => {
     if (book.contentType === 'pdf') {
-      // 1. Nếu đang ở trang > 1, lùi lại 1 trang
       if (pageNumber > 1) {
         setPageNumber(prev => prev - 1);
         return;
       }
     }
-
-    // 2. Nếu ở trang 1, quay lại chương trước đó
     if (currentIndex > 0) {
       const prevIdx = currentIndex - 1;
       const item = flattenedReadingList[prevIdx];
       setCurrentIndex(prevIdx);
-      
       if (item.url && item.url !== source) {
         setSource(item.url);
         setIsLoading(true);
-        // Lưu ý: Khi quay lại file trước, ta chưa biết tổng số trang của nó 
-        // nên tạm thời về trang 1, hoặc logic phức tạp hơn là về trang cuối.
         setPageNumber(1); 
       } else {
         setPageNumber(item.pageNumber || 1);
@@ -195,7 +183,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const selectNode = (node: any) => {
     const idx = flattenedReadingList.findIndex(item => item.id === node.id);
     if (idx !== -1) setCurrentIndex(idx);
-    
     if (node.url && node.url !== source) {
       setSource(node.url);
       setIsLoading(true);
@@ -208,7 +195,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
       const isExpanded = expandedNodes.has(node.id);
       const hasChildren = node.children.length > 0;
       const isSelected = flattenedReadingList[currentIndex]?.id === node.id;
-
       return (
         <div key={node.id} className="select-none">
           <div 
@@ -276,21 +262,15 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             <div className="flex items-center gap-2">
                 <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-400 hover:text-white transition-colors" title="Bật/Tắt Menu"><Menu size={18} /></button>
                 <div className="h-6 w-px bg-gray-800 mx-1"></div>
-                
                 <div className="flex items-center gap-1 bg-[#252525] px-2 py-1 rounded-lg border border-gray-800">
                     <button onClick={handlePrev} className="p-1 text-gray-400 hover:text-white"><ChevronLeft size={16} /></button>
                     <div className="flex flex-col items-center min-w-[80px]">
-                        <span className="text-[10px] text-gray-300 font-mono font-bold leading-none">
-                            Trang {pageNumber} / {numPages}
-                        </span>
-                        <span className="text-[8px] text-indigo-500 font-bold uppercase mt-0.5">
-                            Mục {currentIndex + 1} / {flattenedReadingList.length}
-                        </span>
+                        <span className="text-[10px] text-gray-300 font-mono font-bold leading-none">Trang {pageNumber} / {numPages}</span>
+                        <span className="text-[8px] text-indigo-500 font-bold uppercase mt-0.5">Mục {currentIndex + 1} / {flattenedReadingList.length}</span>
                     </div>
                     <button onClick={handleNext} className="p-1 text-gray-400 hover:text-white"><ChevronRight size={16} /></button>
                 </div>
             </div>
-            
             <div className="flex items-center gap-3">
                <div className="flex items-center gap-1 bg-[#252525] px-1 py-1 rounded-lg border border-gray-800">
                   <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-400 hover:text-white"><ZoomOut size={14} /></button>
@@ -304,7 +284,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         )}
 
         <div ref={containerRef} className={`flex-1 overflow-y-auto relative ${isPresentationMode ? 'bg-black' : 'bg-[#2a2a2a]'} custom-scrollbar`}>
-            <div className="min-h-full w-full flex items-center justify-center p-6">
+            <div className="min-h-full w-full flex items-start justify-center p-12">
                 {isLoading && (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#2a2a2a]/60 backdrop-blur-md">
                         <Loader2 className="animate-spin text-indigo-500 mb-2" size={32} />
@@ -319,17 +299,21 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                       onLoadError={() => setIsLoading(false)}
                       options={pdfOptions}
                       inputRef={documentRef}
-                      className="flex justify-center"
+                      className="flex justify-center w-full"
                       loading={null}
                   >
-                      <PDFPage pageNumber={pageNumber} width={Math.min(containerSize?.width ? containerSize.width * 0.9 : 600, 1000)} scale={scale} />
+                      <PDFPage 
+                        pageNumber={pageNumber} 
+                        width={Math.min(containerSize?.width ? containerSize.width * 0.85 : 600, 1000)} 
+                        scale={scale} 
+                      />
                   </Document>
                 ) : (
                   <div className="flex flex-col items-center gap-6" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
                      <img 
                         src={source} 
                         alt="Reading"
-                        className="shadow-2xl bg-white max-w-full h-auto rounded-xl border border-white/10"
+                        className="shadow-2xl bg-white max-w-full h-auto rounded-sm border border-white/10"
                         style={{ width: containerSize ? containerSize.width * 0.85 : 'auto', maxHeight: '90vh', objectFit: 'contain' }}
                         onLoad={() => { setIsLoading(false); setNumPages(1); }}
                         onError={() => setIsLoading(false)}
