@@ -284,19 +284,30 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         )}
 
         <div ref={containerRef} className={`flex-1 overflow-y-auto relative ${isPresentationMode ? 'bg-black' : 'bg-[#2a2a2a]'} custom-scrollbar`}>
-            <div className="min-h-full w-full flex items-start justify-center p-12">
-                {isLoading && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#2a2a2a]/60 backdrop-blur-md">
-                        <Loader2 className="animate-spin text-indigo-500 mb-2" size={32} />
-                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Đang nạp nội dung...</span>
+            {/* Overlay Loading nâng cấp */}
+            {isLoading && (
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a]/80 backdrop-blur-xl transition-all duration-500">
+                    <div className="relative w-24 h-24 mb-6">
+                        <div className="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <BookIcon className="text-indigo-400 animate-pulse" size={32} />
+                        </div>
                     </div>
-                )}
+                    <h3 className="text-white font-black uppercase tracking-[0.3em] text-[11px] mb-2 animate-pulse">Đang nạp dữ liệu tri thức</h3>
+                    <p className="text-gray-500 text-[9px] font-bold uppercase tracking-widest italic">Vui lòng đợi trong giây lát...</p>
+                </div>
+            )}
 
+            <div className="min-h-full w-full flex items-start justify-center p-8 md:p-12">
                 {book.contentType === 'pdf' ? (
                   <Document
                       file={source}
                       onLoadSuccess={onDocumentLoadSuccess}
-                      onLoadError={() => setIsLoading(false)}
+                      onLoadError={(error) => {
+                        console.error("PDF Load Error:", error);
+                        setIsLoading(false);
+                      }}
                       options={pdfOptions}
                       inputRef={documentRef}
                       className="flex justify-center w-full"
@@ -304,21 +315,21 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                   >
                       <PDFPage 
                         pageNumber={pageNumber} 
-                        width={Math.min(containerSize?.width ? containerSize.width * 0.85 : 600, 1000)} 
+                        width={Math.min(containerSize?.width ? containerSize.width * 0.88 : 600, 1100)} 
                         scale={scale} 
                       />
                   </Document>
                 ) : (
-                  <div className="flex flex-col items-center gap-6" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
+                  <div className="flex flex-col items-center gap-8" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
                      <img 
                         src={source} 
                         alt="Reading"
-                        className="shadow-2xl bg-white max-w-full h-auto rounded-sm border border-white/10"
-                        style={{ width: containerSize ? containerSize.width * 0.85 : 'auto', maxHeight: '90vh', objectFit: 'contain' }}
+                        className="shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] bg-white max-w-full h-auto rounded-sm border border-white/5"
+                        style={{ width: containerSize ? containerSize.width * 0.88 : 'auto', maxHeight: '85vh', objectFit: 'contain' }}
                         onLoad={() => { setIsLoading(false); setNumPages(1); }}
                         onError={() => setIsLoading(false)}
                      />
-                     <div className="text-indigo-300 text-xs font-bold uppercase tracking-widest bg-indigo-500/10 border border-indigo-500/20 px-6 py-2 rounded-full shadow-xl backdrop-blur-md animate-slide-up">
+                     <div className="text-indigo-300 text-xs font-black uppercase tracking-[0.4em] bg-indigo-600/10 border border-indigo-500/30 px-8 py-3 rounded-2xl shadow-2xl backdrop-blur-md animate-slide-up">
                         {flattenedReadingList[currentIndex]?.title}
                      </div>
                   </div>
@@ -326,8 +337,8 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             </div>
 
             {isPresentationMode && (
-                 <button onClick={() => setIsPresentationMode(false)} className="fixed top-6 right-6 p-3 bg-gray-800/80 text-white rounded-full border border-gray-600 z-50 hover:bg-red-600 transition-all shadow-2xl backdrop-blur-md">
-                    <X size={20} />
+                 <button onClick={() => setIsPresentationMode(false)} className="fixed top-8 right-8 p-4 bg-gray-800/80 text-white rounded-full border border-gray-700 z-50 hover:bg-red-600 hover:scale-110 transition-all shadow-2xl backdrop-blur-xl">
+                    <X size={24} />
                  </button>
             )}
         </div>
