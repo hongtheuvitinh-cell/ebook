@@ -1,11 +1,11 @@
-
 import React, { useState } from 'react';
 import { Book, Category, Chapter } from '../types';
 import { 
   Plus, Trash2, List, FolderPlus, Folder, Image as ImageIcon, 
   FileText as PdfIcon, Headphones, AlertCircle, Loader2, 
   BookOpen, ExternalLink, ChevronRight, ChevronDown, Layers, Info,
-  PlusCircle, LayoutGrid, PencilLine, FilePlus2, ListPlus, CornerDownRight, Subtitles
+  PlusCircle, LayoutGrid, PencilLine, FilePlus2, ListPlus, CornerDownRight, 
+  PlusSquare, ListTree, Link2, Hash
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
@@ -23,29 +23,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   const [editingChaptersBookId, setEditingChaptersBookId] = useState<string | null>(null);
-  const [newChapter, setNewChapter] = useState({ title: '', pageNumber: 1, url: '', parentId: '' });
-  const [selectedParentTitle, setSelectedParentTitle] = useState<string | null>(null);
+  const [newChapterTitle, setNewChapterTitle] = useState('');
+  const [addingToParentId, setAddingToParentId] = useState<string | null>(null);
+  const [newLesson, setNewLesson] = useState({ title: '', url: '', pageNumber: 0 });
 
   const [newBook, setNewBook] = useState({ title: '', author: '', url: '', categoryId: '', contentType: 'pdf' as any });
   const [newCategory, setNewCategory] = useState({ name: '', description: '', parentId: '' });
 
   // --- HANDLERS ---
-  const handleAddBook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBook.title || !newBook.url) return;
+
+  // Fix: Added missing deleteBook function
+  const deleteBook = async (id: string) => {
+    if (!window.confirm("Xóa sách này và toàn bộ mục lục?")) return;
     setIsProcessing(true);
     try {
-      const { error } = await supabase.from('books').insert({
-        title: newBook.title, author: newBook.author || 'Chưa rõ',
-        url: newBook.url, category_id: newBook.categoryId || null,
-        content_type: newBook.contentType, is_visible: true
-      });
+      const { error } = await supabase.from('books').delete().eq('id', id);
       if (error) throw error;
-      setNewBook({ title: '', author: '', url: '', categoryId: '', contentType: 'pdf' });
       onRefresh();
     } catch (err: any) { setErrorMessage(err.message); } finally { setIsProcessing(false); }
   };
 
+  // Fix: Added missing handleAddCategory function
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategory.name) return;
@@ -62,8 +60,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     } catch (err: any) { setErrorMessage(err.message); } finally { setIsProcessing(false); }
   };
 
+  // Fix: Added missing deleteCategory function
   const deleteCategory = async (id: string) => {
-    if (!window.confirm("Xóa danh mục này sẽ ảnh hưởng đến các sách thuộc danh mục đó. Tiếp tục?")) return;
+    if (!window.confirm("Xóa danh mục này?")) return;
     setIsProcessing(true);
     try {
       const { error } = await supabase.from('categories').delete().eq('id', id);
@@ -72,36 +71,62 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     } catch (err: any) { setErrorMessage(err.message); } finally { setIsProcessing(false); }
   };
 
-  const handleAddChapter = async (book: Book) => {
-    if (!newChapter.title) return;
+  const handleAddBook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBook.title || !newBook.url) return;
     setIsProcessing(true);
     try {
-      const { error } = await supabase.from('chapters').insert({
-        book_id: book.id,
-        title: newChapter.title,
-        page_number: newChapter.pageNumber || (book.chapters.length + 1),
-        url: newChapter.url || null,
-        parent_id: newChapter.parentId || null
+      const { error } = await supabase.from('books').insert({
+        title: newBook.title, author: newBook.author || 'Chưa rõ',
+        url: newBook.url, category_id: newBook.categoryId || null,
+        content_type: newBook.contentType, is_visible: true
       });
       if (error) throw error;
-      // Giữ nguyên parentId nếu người dùng đang thêm liên tiếp vào cùng một chương
-      setNewChapter(prev => ({ ...prev, title: '', pageNumber: prev.pageNumber + 1 }));
+      setNewBook({ title: '', author: '', url: '', categoryId: '', contentType: 'pdf' });
       onRefresh();
     } catch (err: any) { setErrorMessage(err.message); } finally { setIsProcessing(false); }
   };
 
-  const deleteBook = async (id: string) => {
-    if (!window.confirm("Xóa cuốn sách này?")) return;
+  const handleQuickAddChapter = async (book: Book) => {
+    if (!newChapterTitle.trim()) return;
     setIsProcessing(true);
     try {
-      await supabase.from('chapters').delete().eq('book_id', id);
-      await supabase.from('books').delete().eq('id', id);
+      const maxPage = book.chapters.filter(c => !c.parentId).reduce((max, c) => Math.max(max, c.pageNumber), 0);
+      const { error } = await supabase.from('chapters').insert({
+        book_id: book.id,
+        title: newChapterTitle.trim(),
+        page_number: maxPage + 1,
+        parent_id: null
+      });
+      if (error) throw error;
+      setNewChapterTitle('');
+      onRefresh();
+    } catch (err: any) { setErrorMessage(err.message); } finally { setIsProcessing(false); }
+  };
+
+  const handleQuickAddLesson = async (book: Book) => {
+    if (!newLesson.title.trim() || !addingToParentId) return;
+    setIsProcessing(true);
+    try {
+      const siblings = book.chapters.filter(c => c.parentId === addingToParentId);
+      const autoPage = newLesson.pageNumber || (siblings.length + 1);
+      
+      const { error } = await supabase.from('chapters').insert({
+        book_id: book.id,
+        title: newLesson.title.trim(),
+        page_number: autoPage,
+        url: newLesson.url.trim() || null,
+        parent_id: addingToParentId
+      });
+      if (error) throw error;
+      setNewLesson({ title: '', url: '', pageNumber: 0 });
+      setAddingToParentId(null);
       onRefresh();
     } catch (err: any) { setErrorMessage(err.message); } finally { setIsProcessing(false); }
   };
 
   const deleteChapter = async (id: string) => {
-    if (!window.confirm("Xóa chương/bài này?")) return;
+    if (!window.confirm("Xóa mục này?")) return;
     setIsProcessing(true);
     try {
       await supabase.from('chapters').delete().eq('id', id);
@@ -109,60 +134,111 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
-  const renderAdminChapters = (chapters: Chapter[], parentId: string | null = null, level = 0) => {
-    const filtered = chapters.filter(c => c.parentId === parentId).sort((a, b) => a.pageNumber - b.pageNumber);
-    return filtered.map(ch => (
-      <React.Fragment key={ch.id}>
-        <div className={`flex items-center justify-between p-3 rounded-xl border group transition-all mb-2 ${level === 0 ? 'bg-indigo-600/5 border-indigo-500/10' : 'bg-gray-900/40 border-white/5'}`} style={{ marginLeft: `${level * 32}px` }}>
-            <div className="flex items-center gap-3">
-                {level > 0 && <CornerDownRight size={14} className="text-gray-700" />}
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shadow-inner ${level === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-500'}`}>
-                    {ch.pageNumber}
+  const renderAdminTree = (book: Book, parentId: string | null = null, level = 0) => {
+    const items = book.chapters.filter(c => c.parentId === parentId).sort((a, b) => a.pageNumber - b.pageNumber);
+    
+    return (
+      <div className="space-y-2">
+        {items.map(item => (
+          <div key={item.id} className="group">
+            <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${level === 0 ? 'bg-indigo-600/10 border-indigo-500/20 shadow-sm' : 'bg-gray-800/40 border-white/5 ml-8 border-l-2 border-l-indigo-500/30'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black ${level === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                  {item.pageNumber}
                 </div>
                 <div>
-                    <span className={`text-sm ${level === 0 ? 'font-black text-white uppercase tracking-wide' : 'text-gray-400 font-medium italic'}`}>{ch.title}</span>
-                    {ch.url && <p className="text-[9px] text-indigo-500/50 truncate max-w-[200px] font-mono">{ch.url}</p>}
+                  <h5 className={`text-sm ${level === 0 ? 'font-black text-white uppercase tracking-tight' : 'font-medium text-gray-300'}`}>
+                    {item.title}
+                  </h5>
+                  {item.url && <p className="text-[9px] text-indigo-400/50 font-mono truncate max-w-[200px] mt-0.5">{item.url}</p>}
                 </div>
-            </div>
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              </div>
+              
+              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 {level === 0 && (
-                    <button 
-                        onClick={() => {
-                            setNewChapter({ ...newChapter, parentId: ch.id });
-                            setSelectedParentTitle(ch.title);
-                            window.scrollTo({ top: 0, behavior: 'smooth' }); // Cuộn lên form nếu cần
-                        }} 
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 text-indigo-400 rounded-lg text-[10px] font-black hover:bg-indigo-600 hover:text-white transition-all"
-                    >
-                        <Plus size={12} /> THÊM BÀI CON
-                    </button>
+                  <button 
+                    onClick={() => {
+                      setAddingToParentId(addingToParentId === item.id ? null : item.id);
+                      setNewLesson(prev => ({ ...prev, pageNumber: book.chapters.filter(c => c.parentId === item.id).length + 1 }));
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-500 shadow-lg"
+                  >
+                    <Plus size={12} /> THÊM BÀI
+                  </button>
                 )}
-                <button onClick={() => deleteChapter(ch.id)} className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 size={14}/></button>
+                <button onClick={() => deleteChapter(item.id)} className="p-2 text-gray-600 hover:text-red-500 transition-all"><Trash2 size={16}/></button>
+              </div>
             </div>
-        </div>
-        {renderAdminChapters(chapters, ch.id, level + 1)}
-      </React.Fragment>
-    ));
+
+            {/* Form thêm bài con nhanh ngay dưới chương */}
+            {addingToParentId === item.id && (
+              <div className="ml-8 mt-2 p-4 bg-indigo-600/5 border border-indigo-500/20 rounded-2xl animate-slide-up flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">
+                  <PlusSquare size={14} /> Thêm bài mới vào {item.title}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-5 relative">
+                    <input 
+                      type="text" 
+                      placeholder="Tên bài (VD: Bài 1: Đại cương...)" 
+                      value={newLesson.title}
+                      onChange={e => setNewLesson({...newLesson, title: e.target.value})}
+                      className="w-full bg-[#151515] border border-white/10 rounded-xl p-3 text-xs text-white focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-4">
+                    <input 
+                      type="text" 
+                      placeholder="Link riêng (Nếu có)" 
+                      value={newLesson.url}
+                      onChange={e => setNewLesson({...newLesson, url: e.target.value})}
+                      className="w-full bg-[#151515] border border-white/10 rounded-xl p-3 text-xs text-white focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <input 
+                      type="number" 
+                      placeholder="STT" 
+                      value={newLesson.pageNumber || ''}
+                      onChange={e => setNewLesson({...newLesson, pageNumber: parseInt(e.target.value) || 0})}
+                      className="w-full bg-[#151515] border border-white/10 rounded-xl p-3 text-xs text-white text-center focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <button 
+                      onClick={() => handleQuickAddLesson(book)}
+                      className="w-full h-full bg-indigo-600 text-white font-black rounded-xl text-[10px] uppercase hover:bg-indigo-500"
+                    >
+                      LƯU BÀI
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {renderAdminTree(book, item.id, level + 1)}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
     <div className="container mx-auto px-4 py-8 text-white max-w-6xl min-h-screen">
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-600/30">
-             <LayoutGrid size={24} />
-          </div>
-          <div>
-            <h1 className="text-3xl font-black text-white font-serif tracking-tight">Quản Trị Hệ Thống</h1>
-            <p className="text-indigo-400/60 text-[10px] font-bold uppercase tracking-[0.2em] mt-0.5">Xây dựng cây tri thức số</p>
-          </div>
+        <div>
+          <h1 className="text-4xl font-black text-white tracking-tight flex items-center gap-3 italic">
+            <ListTree className="text-indigo-500" size={36} /> DASHBOARD
+          </h1>
+          <p className="text-indigo-400/60 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Hệ thống biên tập tri thức</p>
         </div>
         <div className="flex bg-[#2a2a2a] p-1.5 rounded-2xl border border-white/5 shadow-2xl">
-            <button onClick={() => setActiveTab('books')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black transition-all duration-300 ${activeTab === 'books' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}>
-                <BookOpen size={14} /> SÁCH & CHƯƠNG
+            <button onClick={() => setActiveTab('books')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'books' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'}`}>
+                SÁCH & MỤC LỤC
             </button>
-            <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black transition-all duration-300 ${activeTab === 'categories' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}>
-                <LayoutGrid size={14} /> DANH MỤC
+            <button onClick={() => setActiveTab('categories')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black transition-all ${activeTab === 'categories' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'}`}>
+                DANH MỤC
             </button>
         </div>
       </div>
@@ -171,147 +247,145 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center">
             <div className="bg-[#2a2a2a] p-10 rounded-[2.5rem] border border-indigo-500/30 flex flex-col items-center gap-4 shadow-2xl">
                 <Loader2 className="animate-spin text-indigo-500" size={48} />
-                <span className="text-xs font-black text-indigo-300 uppercase tracking-[0.2em]">Đang lưu thay đổi...</span>
+                <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Đang cập nhật...</span>
             </div>
         </div>
       )}
 
       {activeTab === 'books' && (
         <div className="space-y-12 animate-slide-up">
-          {/* FORM THÊM SÁCH */}
-          <div className="bg-[#2a2a2a] p-8 rounded-[2rem] border border-white/5 shadow-2xl">
-            <h2 className="text-[10px] font-black mb-8 uppercase tracking-[0.3em] text-indigo-400 flex items-center gap-3">
-                <Plus size={16} /> Nhập sách mới
-                <div className="h-px flex-1 bg-white/5"></div>
+          {/* PHẦN THÊM SÁCH MỚI */}
+          <div className="bg-gradient-to-br from-[#2a2a2a] to-[#1e1e1e] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+            <h2 className="text-[11px] font-black mb-8 uppercase tracking-[0.4em] text-indigo-400 flex items-center gap-3">
+              <Plus size={18} /> Nhập sách vào kho
+              <div className="h-px flex-1 bg-white/5"></div>
             </h2>
-            <form onSubmit={handleAddBook} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Tiêu đề</label>
-                <input type="text" value={newBook.title} onChange={e => setNewBook({...newBook, title: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm focus:border-indigo-500 outline-none transition-all text-white" placeholder="Tên sách..." required />
+            <form onSubmit={handleAddBook} className="grid grid-cols-1 md:grid-cols-12 gap-6">
+              <div className="md:col-span-4 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tên sách</label>
+                <input type="text" value={newBook.title} onChange={e => setNewBook({...newBook, title: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="VD: Vật Lý 12 - Chân trời sáng tạo" required />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Tác giả</label>
-                <input type="text" value={newBook.author} onChange={e => setNewBook({...newBook, author: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm focus:border-indigo-500 outline-none transition-all text-white" placeholder="Tên tác giả..." />
+              <div className="md:col-span-3 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tác giả / Nhà XB</label>
+                <input type="text" value={newBook.author} onChange={e => setNewBook({...newBook, author: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="VD: CTST" />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Danh mục</label>
-                <select value={newBook.categoryId} onChange={e => setNewBook({...newBook, categoryId: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm focus:border-indigo-500 outline-none transition-all text-white">
+              <div className="md:col-span-3 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2 tracking-widest">Phân loại</label>
+                <select value={newBook.categoryId} onChange={e => setNewBook({...newBook, categoryId: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none shadow-inner">
                   <option value="">-- Chọn danh mục --</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2">URL Sách</label>
-                <input type="text" value={newBook.url} onChange={e => setNewBook({...newBook, url: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm focus:border-indigo-500 outline-none transition-all text-white" placeholder="https://..." required />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Định dạng</label>
-                <select value={newBook.contentType} onChange={e => setNewBook({...newBook, contentType: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm focus:border-indigo-500 outline-none transition-all text-white">
-                  <option value="pdf">PDF (Mặc định)</option>
-                  <option value="image">Hình ảnh</option>
-                  <option value="audio">Âm thanh</option>
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2 tracking-widest">Định dạng</label>
+                <select value={newBook.contentType} onChange={e => setNewBook({...newBook, contentType: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none shadow-inner">
+                  <option value="pdf">Sách PDF</option>
+                  <option value="image">Sách Ảnh</option>
+                  <option value="audio">Sách Nói</option>
                 </select>
               </div>
-              <button type="submit" className="md:col-span-3 bg-indigo-600 p-5 rounded-2xl font-black hover:bg-indigo-500 transition-all text-xs tracking-[0.3em] shadow-xl">
-                LƯU TÁC PHẨM
-              </button>
+              <div className="md:col-span-10 space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Link2 size={12}/> Link file gốc (Drive/Dropbox...)</label>
+                <input type="text" value={newBook.url} onChange={e => setNewBook({...newBook, url: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="https://..." required />
+              </div>
+              <div className="md:col-span-2 flex items-end">
+                <button type="submit" className="w-full bg-indigo-600 h-[54px] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg hover:bg-indigo-500 transition-all active:scale-95">LƯU SÁCH</button>
+              </div>
             </form>
           </div>
 
+          {/* DANH SÁCH SÁCH ĐANG QUẢN LÝ */}
           <div className="space-y-6">
-            <h3 className="text-indigo-400/50 text-[10px] font-black uppercase tracking-[0.4em] ml-2 flex items-center gap-3">
-                 Thư viện quản lý
-                 <div className="h-px flex-1 bg-white/5"></div>
+            <h3 className="text-gray-500 text-[10px] font-black uppercase tracking-[0.5em] ml-2 flex items-center gap-4">
+              DANH SÁCH TÁC PHẨM
+              <div className="h-px flex-1 bg-white/5"></div>
             </h3>
             
             {books.map(book => (
-              <div key={book.id} className="bg-[#252525] border border-white/5 rounded-3xl overflow-hidden shadow-2xl transition-all hover:border-indigo-500/20 group">
+              <div key={book.id} className="bg-[#252525] border border-white/5 rounded-[2rem] overflow-hidden transition-all hover:border-indigo-500/30 shadow-2xl group">
                 <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                   <div className="flex items-center gap-5 w-full md:w-auto">
                     <div className="w-16 h-20 bg-[#1a1a1a] rounded-2xl flex items-center justify-center text-indigo-400 border border-white/5 shadow-inner">
-                      {book.contentType === 'pdf' ? <PdfIcon size={28}/> : book.contentType === 'image' ? <ImageIcon size={28}/> : <Headphones size={28}/>}
+                      {book.contentType === 'pdf' ? <PdfIcon size={32}/> : book.contentType === 'image' ? <ImageIcon size={32}/> : <Headphones size={32}/>}
                     </div>
                     <div>
-                      <h3 className="font-black text-xl text-white truncate max-w-[300px]">{book.title}</h3>
-                      <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mt-1">{book.author} • {book.chapters.length} mục</p>
+                      <h4 className="text-xl font-black text-white group-hover:text-indigo-200 transition-colors leading-tight">{book.title}</h4>
+                      <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] mt-1.5">{book.author} • <span className="text-indigo-500">{book.chapters.length} mục lục</span></p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                  <div className="flex items-center gap-3">
                     <button 
-                        onClick={() => {
-                            setEditingChaptersBookId(editingChaptersBookId === book.id ? null : book.id);
-                            setNewChapter({ title: '', pageNumber: book.chapters.length + 1, url: '', parentId: '' });
-                            setSelectedParentTitle(null);
-                        }} 
-                        className={`px-8 py-3.5 rounded-2xl text-[10px] font-black tracking-widest transition-all border flex items-center gap-2 ${editingChaptersBookId === book.id ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg' : 'bg-[#333] text-gray-400 border-white/5 hover:text-white hover:bg-gray-700'}`}
+                      onClick={() => setEditingChaptersBookId(editingChaptersBookId === book.id ? null : book.id)}
+                      className={`px-8 py-3.5 rounded-2xl text-[10px] font-black tracking-widest border transition-all flex items-center gap-2 ${editingChaptersBookId === book.id ? 'bg-indigo-600 text-white border-indigo-500 shadow-xl' : 'bg-[#333] text-gray-400 border-white/5 hover:text-white'}`}
                     >
-                        {editingChaptersBookId === book.id ? 'ĐÓNG LẠI' : 'QUẢN LÝ MỤC LỤC'}
+                      {editingChaptersBookId === book.id ? <><ChevronDown size={14}/> ĐÓNG</> : <><ListTree size={14}/> QUẢN LÝ MỤC LỤC</>}
                     </button>
-                    <button onClick={() => deleteBook(book.id)} className="p-4 text-gray-700 hover:text-red-400 transition-all"><Trash2 size={22}/></button>
+                    <button onClick={() => deleteBook(book.id)} className="p-4 text-gray-700 hover:text-red-500 transition-all"><Trash2 size={24}/></button>
                   </div>
                 </div>
 
-                {/* CHI TIẾT MỤC LỤC */}
+                {/* KHU VỰC BIÊN TẬP MỤC LỤC CHI TIẾT */}
                 {editingChaptersBookId === book.id && (
                   <div className="p-8 bg-[#1e1e1e] border-t border-white/5 animate-slide-up">
-                    <div className="bg-indigo-600/10 border border-indigo-500/20 p-8 rounded-[2rem] mb-10 shadow-inner">
-                        <div className="flex items-center justify-between mb-6">
-                            <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                <Plus size={16} /> {selectedParentTitle ? `Thêm bài vào: ${selectedParentTitle}` : 'Thêm Chương / Bài mới'}
-                            </h4>
-                            {selectedParentTitle && (
-                                <button 
-                                    onClick={() => {
-                                        setNewChapter({ ...newChapter, parentId: '' });
-                                        setSelectedParentTitle(null);
-                                    }} 
-                                    className="text-[9px] font-black text-gray-500 hover:text-white uppercase tracking-tighter"
-                                >
-                                    [Hủy chọn mục cha]
-                                </button>
-                            )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      
+                      {/* Cột trái: Thêm Chương mới */}
+                      <div className="space-y-6">
+                        <div className="bg-indigo-600/10 p-6 rounded-[2rem] border border-indigo-500/20 shadow-inner">
+                          <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                             <PlusSquare size={16} /> Bước 1: Thêm Chương (Mục chính)
+                          </h5>
+                          <div className="flex gap-3">
+                            <input 
+                              type="text" 
+                              placeholder="Nhập tên chương (VD: Chương 1)" 
+                              value={newChapterTitle}
+                              onChange={e => setNewChapterTitle(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && handleQuickAddChapter(book)}
+                              className="flex-1 bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none shadow-inner"
+                            />
+                            <button 
+                              onClick={() => handleQuickAddChapter(book)}
+                              className="bg-indigo-600 px-6 rounded-2xl font-black text-[10px] uppercase hover:bg-indigo-500 shadow-lg"
+                            >
+                              THÊM CHƯƠNG
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-gray-600 mt-4 italic">* Hệ thống sẽ tự động đánh số thứ tự tiếp theo cho chương mới.</p>
                         </div>
+                        
+                        <div className="bg-[#151515] p-6 rounded-[2.5rem] border border-white/5 min-h-[400px]">
+                          <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+                            <h5 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Xem trước Cây thư mục</h5>
+                            <span className="text-[9px] text-indigo-500/50 italic">Kéo thả để sắp xếp (Sắp ra mắt)</span>
+                          </div>
+                          {book.chapters.length === 0 ? (
+                            <div className="text-center py-24 text-gray-800 uppercase font-black tracking-widest text-[10px]">Thư mục đang trống</div>
+                          ) : renderAdminTree(book)}
+                        </div>
+                      </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div className="md:col-span-2 space-y-2">
-                                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Tiêu đề mục lục</label>
-                                <input type="text" placeholder="Ví dụ: Chương 1 hoặc Bài 1..." value={newChapter.title} onChange={e => setNewChapter({...newChapter, title: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none" />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Số trang / Thứ tự</label>
-                                <input type="number" value={newChapter.pageNumber} onChange={e => setNewChapter({...newChapter, pageNumber: parseInt(e.target.value) || 1})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white text-center focus:border-indigo-500 outline-none" />
-                            </div>
-                            <div className="flex items-end">
-                                <button onClick={() => handleAddChapter(book)} className="w-full h-[54px] bg-indigo-600 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg">
-                                    THÊM VÀO CÂY
-                                </button>
-                            </div>
-                            <div className="md:col-span-2 space-y-2">
-                                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Nằm trong (Mục cha)</label>
-                                <select value={newChapter.parentId} onChange={e => {
-                                    setNewChapter({...newChapter, parentId: e.target.value});
-                                    const parent = book.chapters.find(ch => ch.id === e.target.value);
-                                    setSelectedParentTitle(parent ? parent.title : null);
-                                }} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none">
-                                    <option value="">-- Là mục chính (Cấp 1) --</option>
-                                    {book.chapters.filter(c => !c.parentId).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                                </select>
-                            </div>
-                            <div className="md:col-span-2 space-y-2">
-                                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Link riêng (Nếu có)</label>
-                                <input type="text" placeholder="https://... (Bỏ trống nếu dùng chung link sách)" value={newChapter.url} onChange={e => setNewChapter({...newChapter, url: e.target.value})} className="w-full bg-[#151515] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-[#151515] p-6 rounded-[2rem] border border-white/5 max-h-[600px] overflow-y-auto custom-scrollbar">
-                        <div className="px-4 py-2 border-b border-white/5 mb-6 flex items-center justify-between">
-                            <h5 className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em]">Cấu trúc phân cấp hiện tại</h5>
-                            <span className="text-[9px] text-gray-600 italic">Mẹo: Nhấn "Thêm bài con" để tự động chọn cha</span>
-                        </div>
-                        {book.chapters.length === 0 ? (
-                            <div className="text-center py-20 text-gray-800 font-black uppercase tracking-widest text-[10px]">Chưa có dữ liệu mục lục</div>
-                        ) : renderAdminChapters(book.chapters)}
+                      {/* Cột phải: Hướng dẫn */}
+                      <div className="bg-[#2a2a2a]/40 p-10 rounded-[2.5rem] border border-dashed border-white/10 flex flex-col justify-center">
+                         <div className="w-16 h-16 bg-indigo-600/10 text-indigo-500 rounded-3xl flex items-center justify-center mb-6">
+                            <Info size={32} />
+                         </div>
+                         <h5 className="text-xl font-black text-white mb-4">Mẹo quản lý nhanh</h5>
+                         <ul className="space-y-4 text-sm text-gray-400 font-medium">
+                            <li className="flex gap-3">
+                              <div className="w-5 h-5 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center text-[10px] shrink-0 font-black">1</div>
+                              <span>Nhấn <b>"THÊM CHƯƠNG"</b> để tạo các đề mục lớn (Chương 1, Chương 2...).</span>
+                            </li>
+                            <li className="flex gap-3">
+                              <div className="w-5 h-5 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center text-[10px] shrink-0 font-black">2</div>
+                              <span>Bên dưới mỗi chương hiện ra, nhấn nút <b>"THÊM BÀI"</b> để bắt đầu nhập bài con vào chương đó.</span>
+                            </li>
+                            <li className="flex gap-3">
+                              <div className="w-5 h-5 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center text-[10px] shrink-0 font-black">3</div>
+                              <span>Hệ thống tự đếm số thứ tự. Nếu muốn chèn vào giữa, hãy nhập số <b>STT</b> bạn muốn, chương trình sẽ tự đẩy các bài sau xuống.</span>
+                            </li>
+                         </ul>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -321,6 +395,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
         </div>
       )}
 
+      {/* TAB DANH MỤC */}
       {activeTab === 'categories' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 animate-slide-up">
             <div className="lg:col-span-1">
@@ -330,25 +405,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                     </h2>
                     <form onSubmit={handleAddCategory} className="space-y-6">
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tên danh mục</label>
-                            <input type="text" value={newCategory.name} onChange={e => setNewCategory({...newCategory, name: e.target.value})} className="w-full bg-[#1c1c1c] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none" placeholder="Văn học, IT, Ngoại ngữ..." required />
+                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tên phân loại</label>
+                            <input type="text" value={newCategory.name} onChange={e => setNewCategory({...newCategory, name: e.target.value})} className="w-full bg-[#1c1c1c] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none" placeholder="VD: Lịch sử, IT..." required />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Mục cha</label>
+                            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Nhánh cha</label>
                             <select value={newCategory.parentId} onChange={e => setNewCategory({...newCategory, parentId: e.target.value})} className="w-full bg-[#1c1c1c] border border-white/10 rounded-2xl p-4 text-sm text-white focus:border-indigo-500 outline-none">
-                                <option value="">-- Danh mục gốc --</option>
+                                <option value="">-- Cấp cao nhất --</option>
                                 {categories.filter(c => !c.parentId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
-                        <button type="submit" className="w-full bg-indigo-600 py-5 rounded-2xl font-black hover:bg-indigo-500 transition-all text-[11px] tracking-[0.3em] shadow-xl">
-                            CẬP NHẬT
-                        </button>
+                        <button type="submit" className="w-full bg-indigo-600 py-5 rounded-2xl font-black hover:bg-indigo-500 transition-all text-[11px] tracking-[0.3em] shadow-xl">CẬP NHẬT</button>
                     </form>
                 </div>
             </div>
             <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                 {categories.map(cat => (
-                    <div key={cat.id} className="bg-gradient-to-br from-[#2a2a2a] to-[#1e1e1e] p-7 rounded-[2.5rem] border border-white/5 hover:border-indigo-500/30 transition-all group shadow-2xl relative overflow-hidden">
+                    <div key={cat.id} className="bg-gradient-to-br from-[#2a2a2a] to-[#1e1e1e] p-7 rounded-[2.5rem] border border-white/5 hover:border-indigo-500/30 transition-all group shadow-2xl">
                         <div className="flex justify-between items-start mb-6">
                             <div className="p-3.5 bg-indigo-600/10 text-indigo-400 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-all">
                                 <Folder size={24} />
@@ -356,7 +429,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                             <button onClick={() => deleteCategory(cat.id)} className="p-3 text-gray-700 hover:text-red-400 transition-all"><Trash2 size={18} /></button>
                         </div>
                         <h4 className="font-black text-white text-xl mb-1">{cat.name}</h4>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Hệ thống phân loại tri thức</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Hệ thống tri thức</p>
                     </div>
                 ))}
             </div>
@@ -367,4 +440,3 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
 };
 
 export default AdminDashboard;
-
