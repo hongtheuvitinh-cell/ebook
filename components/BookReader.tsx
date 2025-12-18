@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   Sparkles, Maximize, X, Menu, Loader2,
   ChevronDown, ChevronRight as ChevronRightIcon, FileText, FolderOpen, Book as BookIcon,
-  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor
+  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
@@ -28,7 +28,9 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
         {hasChildren ? (
           <span className="shrink-0">{isExpanded ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}</span>
         ) : (
-          <span className="w-3.5 flex justify-center shrink-0 opacity-40"><FileText size={12}/></span>
+          <span className="w-3.5 flex justify-center shrink-0 opacity-40">
+            {node.url?.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac)/i) ? <Music size={12}/> : <FileText size={12}/>}
+          </span>
         )}
         <span className={`text-[11px] truncate ${hasChildren ? 'font-bold' : 'font-normal'}`}>{node.title}</span>
       </div>
@@ -65,12 +67,16 @@ const pdfOptions = {
   disableAutoFetch: true,
 };
 
-const getDirectUrl = (url: string) => {
+const getDirectUrl = (url: string, forIframe: boolean = false) => {
     if (!url) return '';
     if (url.includes('drive.google.com')) {
-        const idMatch = url.match(/\/d\/(.+?)\/(view|edit)?/);
+        const idMatch = url.match(/\/d\/(.+?)\/(view|edit|preview)?/);
         if (idMatch && idMatch[1]) {
-            return `https://docs.google.com/uc?export=download&id=${idMatch[1]}`;
+            const fileId = idMatch[1];
+            if (forIframe) {
+                return `https://drive.google.com/file/d/${fileId}/preview`;
+            }
+            return `https://docs.google.com/uc?export=download&id=${fileId}`;
         }
     }
     return url;
@@ -122,6 +128,11 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     return url.match(/\.(jpeg|jpg|gif|png|webp)/) || book.contentType === 'image';
   }, [source, book.contentType]);
 
+  const isAudioUrl = useMemo(() => {
+    const url = source.toLowerCase();
+    return url.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac)/) || book.contentType === 'audio';
+  }, [source, book.contentType]);
+
   useEffect(() => {
     const rootIds = treeData.filter(n => n.children.length > 0).map(n => n.id);
     setExpandedNodes(new Set(rootIds));
@@ -151,14 +162,12 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     
     const newSource = getDirectUrl(node.url || book.url);
     
-    // NẾU ĐỔI FILE: Luôn về trang 1
     if (newSource !== source) {
         setSource(newSource);
         setIsLoading(true);
         setLoadError(null);
         setPageNumber(1); 
     } else {
-        // CÙNG FILE: Mới nhảy trang theo bookmark
         setPageNumber(node.pageNumber || 1);
     }
   }, [flattenedReadingList, book.url, source]);
@@ -170,37 +179,21 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const onDocumentLoadError = (err: Error) => {
     setIsLoading(false);
-    setLoadError("Không thể nạp file bằng bộ đọc JavaScript. Hãy thử dùng 'Chế độ xem gốc'.");
+    setLoadError("Lỗi nạp file JavaScript. Vui lòng bật 'Chế độ Gốc'.");
   };
 
   const handleNext = () => {
-    // Nếu vẫn còn trang trong file hiện tại, cứ lật tiếp
-    if (!isImageUrl && pageNumber < numPages) { 
+    if (!isImageUrl && !isAudioUrl && pageNumber < numPages) { 
       setPageNumber(prev => prev + 1); 
       return; 
     }
-    
-    // Nếu hết trang trong file hiện tại, nhảy sang bài (node) tiếp theo
     if (currentIndex < flattenedReadingList.length - 1) {
-      const nextNode = flattenedReadingList[currentIndex + 1];
-      const nextSource = getDirectUrl(nextNode.url || book.url);
-      
-      // Nếu bài tiếp theo là file mới, ép về trang 1
-      if (nextSource !== source) {
-        setSource(nextSource);
-        setIsLoading(true);
-        setLoadError(null);
-        setPageNumber(1);
-        setCurrentIndex(currentIndex + 1);
-      } else {
-        // Nếu chung file, nhảy đến trang bookmark của node đó
-        handleSelectNode(nextNode);
-      }
+      handleSelectNode(flattenedReadingList[currentIndex + 1]);
     }
   };
 
   const handlePrev = () => {
-    if (!isImageUrl && pageNumber > 1) { 
+    if (!isImageUrl && !isAudioUrl && pageNumber > 1) { 
       setPageNumber(prev => prev - 1); 
       return; 
     }
@@ -213,6 +206,10 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     if (!containerSize) return 800;
     return containerSize.width * 0.8;
   }, [containerSize]);
+
+  const iframeUrl = useMemo(() => {
+      return getDirectUrl(source, true);
+  }, [source]);
 
   return (
     <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
@@ -244,27 +241,28 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white"><Menu size={18} /></button>
                 <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded border border-white/5">
                     <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white"><ChevronLeft size={16} /></button>
-                    {!isImageUrl && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
-                    {isImageUrl && <span className="text-[10px] text-gray-300 font-mono px-2">Hình ảnh</span>}
+                    {!isImageUrl && !isAudioUrl && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
+                    {(isImageUrl || isAudioUrl) && <span className="text-[10px] text-gray-300 font-mono px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : 'Hình ảnh'}</span>}
                     <button onClick={handleNext} className="p-1 text-gray-500 hover:text-white"><ChevronRight size={16} /></button>
                 </div>
             </div>
             <div className="flex items-center gap-2">
-               {!isImageUrl && (
+               {!isImageUrl && !isAudioUrl && (
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
                   className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
-                  title="Bật/Tắt chế độ xem gốc để mở PDF cực nhanh"
                  >
                     <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
                )}
                <div className="h-4 w-px bg-gray-800 mx-1"></div>
-               <div className="flex items-center gap-1">
-                  <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white"><ZoomOut size={14} /></button>
-                  <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
-                  <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-500 hover:text-white"><ZoomIn size={14} /></button>
-               </div>
+               {!isAudioUrl && (
+                 <div className="flex items-center gap-1">
+                    <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white"><ZoomOut size={14} /></button>
+                    <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
+                    <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-500 hover:text-white"><ZoomIn size={14} /></button>
+                 </div>
+               )}
                <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-500 hover:text-white"><Maximize size={16}/></button>
                <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded ${isAIActive ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'}`}><Sparkles size={16} /></button>
             </div>
@@ -272,18 +270,10 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         )}
 
         <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar bg-[#111]">
-            {isLoading && !loadError && !isImageUrl && !useNativeViewer && (
+            {isLoading && !loadError && !isImageUrl && !isAudioUrl && !useNativeViewer && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a]">
                     <Loader2 className="animate-spin text-indigo-500 mb-4" size={32} />
-                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Đang tối ưu khung hình...</p>
-                </div>
-            )}
-
-            {loadError && !useNativeViewer && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a] p-10 text-center">
-                    <AlertTriangle className="text-red-500 mb-4" size={40} />
-                    <h3 className="text-white font-bold mb-2">Không thể nạp file scan</h3>
-                    <button onClick={() => setUseNativeViewer(true)} className="px-4 py-2 bg-indigo-600 text-white text-xs rounded-lg flex items-center gap-2 mx-auto mt-4"><Monitor size={14} /> Chuyển sang Chế độ Gốc</button>
+                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Đang tải...</p>
                 </div>
             )}
 
@@ -292,17 +282,44 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                     <img 
                       src={source} 
                       className="shadow-2xl transition-all duration-300 bg-white" 
-                      style={{ 
-                        width: `${bookWidth * scale}px`,
-                        maxWidth: 'none'
-                      }}
+                      style={{ width: `${bookWidth * scale}px`, maxWidth: 'none' }}
                       onLoad={() => setIsLoading(false)}
                       alt="Trang sách"
                     />
+                ) : isAudioUrl ? (
+                    <div className="w-full max-w-2xl bg-[#222] rounded-[3rem] p-12 border border-white/5 shadow-2xl flex flex-col items-center gap-8 animate-slide-up mt-12">
+                        <div className="w-48 h-48 bg-indigo-600/10 rounded-[2.5rem] flex items-center justify-center text-indigo-500 border border-indigo-500/20 shadow-inner">
+                            <div className="relative">
+                                <Headphones size={80} className="animate-pulse" />
+                                <div className="absolute -top-4 -right-4 w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl">
+                                    <Music size={24} />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="text-center space-y-2">
+                            <h2 className="text-2xl font-black text-white tracking-tight">{flattenedReadingList[currentIndex]?.title || book.title}</h2>
+                            <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[10px]">{book.author}</p>
+                        </div>
+                        <div className="w-full bg-[#151515] p-6 rounded-[2rem] border border-white/5">
+                            <audio 
+                                controls 
+                                className="w-full h-10 accent-indigo-500" 
+                                src={source}
+                                onCanPlay={() => setIsLoading(false)}
+                                autoPlay
+                            >
+                                Trình duyệt của bạn không hỗ trợ phát âm thanh.
+                            </audio>
+                        </div>
+                        <div className="flex gap-4 w-full">
+                            <button onClick={handlePrev} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài trước</button>
+                            <button onClick={handleNext} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài sau</button>
+                        </div>
+                    </div>
                 ) : useNativeViewer ? (
                     <div className="w-full h-[calc(100vh-80px)] max-w-6xl shadow-2xl rounded-lg overflow-hidden border border-white/5">
                         <iframe 
-                          src={`${source}#page=${pageNumber}&zoom=${scale * 100}`} 
+                          src={iframeUrl} 
                           className="w-full h-full border-0 bg-white"
                           title="Native PDF Viewer"
                         />
@@ -314,11 +331,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                             onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}
                             options={pdfOptions} className="flex justify-center" loading={null}
                         >
-                            <PDFPage 
-                              pageNumber={pageNumber} 
-                              width={bookWidth} 
-                              scale={scale} 
-                            />
+                            <PDFPage pageNumber={pageNumber} width={bookWidth} scale={scale} />
                         </Document>
                     </div>
                 )}
