@@ -43,12 +43,10 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     return roots.sort((a, b) => a.pageNumber - b.pageNumber);
   }, [book.chapters]);
 
-  // Kiểm tra xem đây có phải là sách "phẳng" (không có chương con nào)
   const isFlatBook = useMemo(() => {
     return book.chapters.every(ch => !ch.parentId);
   }, [book.chapters]);
 
-  // Flattened reading list: Tìm các nút lá hoặc các nút có URL riêng
   const flattenedReadingList = useMemo(() => {
     const list: any[] = [];
     const traverse = (nodes: any[]) => {
@@ -74,6 +72,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [source, setSource] = useState<string>(book.url);
   const [pageNumber, setPageNumber] = useState<number>(1);
+  const [numPages, setNumPages] = useState<number>(1); // Tổng số trang của file hiện tại
   const [scale, setScale] = useState(1.0);
   const [isAIActive, setIsAIActive] = useState(false);
   const [currentPageText, setCurrentPageText] = useState<string>('');
@@ -85,9 +84,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
   const documentRef = useRef<any>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Mặc định mở rộng tất cả các chương cấp 1 nếu có con
   useEffect(() => {
     const rootIds = treeData.filter(n => n.children.length > 0).map(n => n.id);
     setExpandedNodes(new Set(rootIds));
@@ -114,12 +111,45 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, [isSidebarOpen, isPresentationMode]);
 
+  // Tự động cập nhật currentIndex khi pageNumber thay đổi (dành cho PDF dùng chung 1 file)
+  useEffect(() => {
+    if (book.contentType === 'pdf') {
+      // Tìm chương phù hợp nhất với trang hiện tại
+      const activeIdx = flattenedReadingList.reduce((bestIdx, item, idx) => {
+        const itemUrl = item.url || book.url;
+        if (itemUrl === source && item.pageNumber <= pageNumber) {
+          return idx;
+        }
+        return bestIdx;
+      }, currentIndex);
+      
+      if (activeIdx !== currentIndex) {
+        setCurrentIndex(activeIdx);
+      }
+    }
+  }, [pageNumber, source, flattenedReadingList, book.url, book.contentType]);
+
   // --- HANDLERS ---
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages);
+    setIsLoading(false);
+  };
+
   const handleNext = () => {
+    if (book.contentType === 'pdf') {
+      // 1. Kiểm tra xem có trang tiếp theo trong file hiện tại không
+      if (pageNumber < numPages) {
+        setPageNumber(prev => prev + 1);
+        return;
+      }
+    }
+
+    // 2. Nếu đã hết trang hoặc không phải PDF, chuyển sang mục (Chapter) tiếp theo
     if (currentIndex < flattenedReadingList.length - 1) {
       const nextIdx = currentIndex + 1;
       const item = flattenedReadingList[nextIdx];
       setCurrentIndex(nextIdx);
+      
       if (item.url && item.url !== source) {
         setSource(item.url);
         setIsLoading(true);
@@ -129,15 +159,29 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   };
 
   const handlePrev = () => {
+    if (book.contentType === 'pdf') {
+      // 1. Nếu đang ở trang > 1, lùi lại 1 trang
+      if (pageNumber > 1) {
+        setPageNumber(prev => prev - 1);
+        return;
+      }
+    }
+
+    // 2. Nếu ở trang 1, quay lại chương trước đó
     if (currentIndex > 0) {
       const prevIdx = currentIndex - 1;
       const item = flattenedReadingList[prevIdx];
       setCurrentIndex(prevIdx);
+      
       if (item.url && item.url !== source) {
         setSource(item.url);
         setIsLoading(true);
+        // Lưu ý: Khi quay lại file trước, ta chưa biết tổng số trang của nó 
+        // nên tạm thời về trang 1, hoặc logic phức tạp hơn là về trang cuối.
+        setPageNumber(1); 
+      } else {
+        setPageNumber(item.pageNumber || 1);
       }
-      setPageNumber(item.pageNumber || 1);
     }
   };
 
@@ -159,7 +203,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     setPageNumber(node.pageNumber || 1);
   };
 
-  // --- RENDER HELPERS ---
   const renderTree = (nodes: any[], level = 0) => {
     return nodes.map(node => {
       const isExpanded = expandedNodes.has(node.id);
@@ -208,8 +251,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   return (
     <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
-      
-      {/* SIDEBAR - TREE MENU */}
       {!isPresentationMode && (
         <div className={`bg-[#252525] border-r border-black flex flex-col transition-all duration-300 ${isSidebarOpen ? 'w-72' : 'w-0 overflow-hidden'}`}>
             <div className="p-5 border-b border-gray-800 bg-[#2d2d2d] shrink-0">
@@ -229,10 +270,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         </div>
       )}
 
-      {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
-        
-        {/* TOOLBAR */}
         {!isPresentationMode && (
           <div className="h-14 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0">
             <div className="flex items-center gap-2">
@@ -240,11 +278,16 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 <div className="h-6 w-px bg-gray-800 mx-1"></div>
                 
                 <div className="flex items-center gap-1 bg-[#252525] px-2 py-1 rounded-lg border border-gray-800">
-                    <button onClick={handlePrev} disabled={currentIndex <= 0} className="p-1 text-gray-400 disabled:opacity-20 hover:text-white"><ChevronLeft size={16} /></button>
-                    <span className="text-[11px] text-gray-300 min-w-[70px] text-center font-mono font-bold">
-                        {currentIndex + 1} / {flattenedReadingList.length}
-                    </span>
-                    <button onClick={handleNext} disabled={currentIndex >= flattenedReadingList.length - 1} className="p-1 text-gray-400 disabled:opacity-20 hover:text-white"><ChevronRight size={16} /></button>
+                    <button onClick={handlePrev} className="p-1 text-gray-400 hover:text-white"><ChevronLeft size={16} /></button>
+                    <div className="flex flex-col items-center min-w-[80px]">
+                        <span className="text-[10px] text-gray-300 font-mono font-bold leading-none">
+                            Trang {pageNumber} / {numPages}
+                        </span>
+                        <span className="text-[8px] text-indigo-500 font-bold uppercase mt-0.5">
+                            Mục {currentIndex + 1} / {flattenedReadingList.length}
+                        </span>
+                    </div>
+                    <button onClick={handleNext} className="p-1 text-gray-400 hover:text-white"><ChevronRight size={16} /></button>
                 </div>
             </div>
             
@@ -260,7 +303,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
           </div>
         )}
 
-        {/* READER AREA */}
         <div ref={containerRef} className={`flex-1 overflow-y-auto relative ${isPresentationMode ? 'bg-black' : 'bg-[#2a2a2a]'} custom-scrollbar`}>
             <div className="min-h-full w-full flex items-center justify-center p-6">
                 {isLoading && (
@@ -273,7 +315,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 {book.contentType === 'pdf' ? (
                   <Document
                       file={source}
-                      onLoadSuccess={() => setIsLoading(false)}
+                      onLoadSuccess={onDocumentLoadSuccess}
                       onLoadError={() => setIsLoading(false)}
                       options={pdfOptions}
                       inputRef={documentRef}
@@ -282,34 +324,19 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                   >
                       <PDFPage pageNumber={pageNumber} width={Math.min(containerSize?.width ? containerSize.width * 0.9 : 600, 1000)} scale={scale} />
                   </Document>
-                ) : book.contentType === 'image' ? (
+                ) : (
                   <div className="flex flex-col items-center gap-6" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
                      <img 
                         src={source} 
                         alt="Reading"
                         className="shadow-2xl bg-white max-w-full h-auto rounded-xl border border-white/10"
                         style={{ width: containerSize ? containerSize.width * 0.85 : 'auto', maxHeight: '90vh', objectFit: 'contain' }}
-                        onLoad={() => setIsLoading(false)}
+                        onLoad={() => { setIsLoading(false); setNumPages(1); }}
                         onError={() => setIsLoading(false)}
                      />
                      <div className="text-indigo-300 text-xs font-bold uppercase tracking-widest bg-indigo-500/10 border border-indigo-500/20 px-6 py-2 rounded-full shadow-xl backdrop-blur-md animate-slide-up">
                         {flattenedReadingList[currentIndex]?.title}
                      </div>
-                  </div>
-                ) : (
-                  <div className="w-full max-w-xl bg-gray-900/80 backdrop-blur-2xl rounded-3xl p-10 border border-white/5 shadow-2xl flex flex-col items-center animate-slide-up">
-                      <div className="w-48 h-48 bg-indigo-600/20 rounded-full flex items-center justify-center mb-8 border border-indigo-500/30 shadow-inner">
-                        <Music size={80} className="text-indigo-400 animate-pulse" />
-                      </div>
-                      <h2 className="text-2xl font-bold text-white mb-2 text-center font-serif">{book.title}</h2>
-                      <p className="text-gray-400 text-sm mb-8">{flattenedReadingList[currentIndex]?.title}</p>
-                      <audio
-                        ref={audioRef}
-                        src={source}
-                        controls
-                        className="w-full accent-indigo-500 h-10"
-                        onLoadedMetadata={() => setIsLoading(false)}
-                      />
                   </div>
                 )}
             </div>
