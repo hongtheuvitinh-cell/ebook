@@ -7,7 +7,8 @@ import {
   BookOpen, ExternalLink, ChevronRight, ChevronDown, Layers, Info,
   PlusCircle, LayoutGrid, PencilLine, FilePlus2, ListPlus, CornerDownRight, 
   PlusSquare, ListTree, Link2, Hash, FolderTree, FilePlus, Minus, 
-  GitBranch, GitCommit, MoveRight, Eye, EyeOff, CheckCircle2, Send
+  GitBranch, GitCommit, MoveRight, Eye, EyeOff, CheckCircle2, Send,
+  FileCode, Music
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
@@ -44,7 +45,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
         url: newBook.url, 
         category_id: newBook.categoryId || null,
         content_type: newBook.contentType, 
-        is_visible: newBook.isVisible // Sử dụng giá trị từ form
+        is_visible: newBook.isVisible
       });
       if (error) throw error;
       setNewBook({ title: '', author: '', url: '', categoryId: '', contentType: 'pdf', isVisible: false });
@@ -68,7 +69,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     if (!window.confirm("Xóa sách này và toàn bộ mục lục?")) return;
     setIsProcessing(true);
     try {
-      await supabase.from('chapters').delete().eq('book_id', id);
+      await supabase.from('chapters').delete().eq('id', id);
       const { error } = await supabase.from('books').delete().eq('id', id);
       if (error) throw error;
       onRefresh();
@@ -318,9 +319,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div className="md:col-span-8 space-y-3">
+              <div className="md:col-span-6 space-y-3">
                 <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Link2 size={12}/> Link PDF Tổng quát</label>
                 <input type="text" value={newBook.url} onChange={e => setNewBook({...newBook, url: e.target.value})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-indigo-500 outline-none shadow-inner" placeholder="https://drive.google.com/..." required />
+              </div>
+              <div className="md:col-span-2 space-y-3">
+                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><FileCode size={12}/> Loại tệp</label>
+                <select 
+                  value={newBook.contentType} 
+                  onChange={e => setNewBook({...newBook, contentType: e.target.value as any})}
+                  className="w-full bg-[#0d0d0d] border border-white/10 rounded-2xl p-5 text-sm font-black text-indigo-400 uppercase outline-none shadow-inner"
+                >
+                  <option value="pdf">PDF</option>
+                  <option value="image">Hình ảnh</option>
+                  <option value="audio">Âm thanh</option>
+                </select>
               </div>
               <div className="md:col-span-2 space-y-3">
                 <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Eye size={12}/> Trạng thái</label>
@@ -371,7 +384,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    {/* Nút chuyển đổi trạng thái hiển thị */}
                     <button 
                       onClick={() => toggleVisibility(book.id, book.isVisible)}
                       className={`p-5 rounded-2xl transition-all flex items-center gap-3 border ${book.isVisible ? 'bg-orange-500/10 border-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white' : 'bg-green-600 border-green-500 text-white hover:bg-green-500 shadow-xl shadow-green-600/20'}`}
