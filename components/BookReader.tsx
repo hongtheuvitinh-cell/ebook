@@ -5,15 +5,23 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   Sparkles, Maximize, X, Menu, Loader2,
   ChevronDown, ChevronRight as ChevronRightIcon, FileText, FolderOpen, Book as BookIcon,
-  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music
+  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music, AlertCircle
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
 import AIAssistant from './AIAssistant';
 
-const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isSelected }: any) => {
+const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isSelected, bookType }: any) => {
   const hasChildren = node.children && node.children.length > 0;
   const isExpanded = expandedNodes.has(node.id);
+
+  // Nhận diện icon: Nếu là link Drive hoặc có đuôi audio thì hiện icon Music
+  const isAudio = useMemo(() => {
+    const url = (node.url || '').toLowerCase();
+    return url.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac|mpeg)/i) || 
+           (url.includes('drive.google.com') && bookType === 'audio') ||
+           (!hasChildren && bookType === 'audio');
+  }, [node.url, bookType, hasChildren]);
 
   return (
     <div className="select-none">
@@ -29,7 +37,7 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
           <span className="shrink-0">{isExpanded ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}</span>
         ) : (
           <span className="w-3.5 flex justify-center shrink-0 opacity-40">
-            {node.url?.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac)/i) ? <Music size={12}/> : <FileText size={12}/>}
+            {isAudio ? <Music size={12}/> : <FileText size={12}/>}
           </span>
         )}
         <span className={`text-[11px] truncate ${hasChildren ? 'font-bold' : 'font-normal'}`}>{node.title}</span>
@@ -45,6 +53,7 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
               toggleExpand={toggleExpand} 
               onSelect={onSelect} 
               isSelected={isSelected} 
+              bookType={bookType}
             />
           ))}
         </div>
@@ -70,7 +79,8 @@ const pdfOptions = {
 const getDirectUrl = (url: string, forIframe: boolean = false) => {
     if (!url) return '';
     if (url.includes('drive.google.com')) {
-        const idMatch = url.match(/\/d\/(.+?)\/(view|edit|preview)?/);
+        // Regex mạnh mẽ hơn để bắt ID kể cả khi có tham số query phía sau
+        const idMatch = url.match(/(?:\/d\/|id=)([\w-]+)/);
         if (idMatch && idMatch[1]) {
             const fileId = idMatch[1];
             if (forIframe) {
@@ -130,7 +140,9 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const isAudioUrl = useMemo(() => {
     const url = source.toLowerCase();
-    return url.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac)/) || book.contentType === 'audio';
+    return url.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac|mpeg)/) || 
+           book.contentType === 'audio' || 
+           source.includes('docs.google.com/uc'); // Link drive đã parse
   }, [source, book.contentType]);
 
   useEffect(() => {
@@ -167,6 +179,8 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         setIsLoading(true);
         setLoadError(null);
         setPageNumber(1); 
+        // Nếu chuyển sang bài mới, reset lại chế độ xem native về mặc định (Web) 
+        // trừ khi file trước đó bị lỗi
     } else {
         setPageNumber(node.pageNumber || 1);
     }
@@ -179,7 +193,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const onDocumentLoadError = (err: Error) => {
     setIsLoading(false);
-    setLoadError("Lỗi nạp file JavaScript. Vui lòng bật 'Chế độ Gốc'.");
+    setLoadError("Lỗi nạp file PDF. Vui lòng bật 'Chế độ Gốc'.");
   };
 
   const handleNext = () => {
@@ -208,8 +222,9 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   }, [containerSize]);
 
   const iframeUrl = useMemo(() => {
-      return getDirectUrl(source, true);
-  }, [source]);
+      const originalUrl = flattenedReadingList[currentIndex]?.url || book.url;
+      return getDirectUrl(originalUrl, true);
+  }, [currentIndex, book.url, flattenedReadingList]);
 
   return (
     <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
@@ -228,6 +243,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                     key={node.id} node={node} level={0} 
                     expandedNodes={expandedNodes} toggleExpand={(id: string) => setExpandedNodes(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })} 
                     onSelect={handleSelectNode} isSelected={flattenedReadingList[currentIndex]?.id === node.id}
+                    bookType={book.contentType}
                   />
                 ))}
             </div>
@@ -247,10 +263,11 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 </div>
             </div>
             <div className="flex items-center gap-2">
-               {!isImageUrl && !isAudioUrl && (
+               {!isImageUrl && (
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
                   className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
+                  title="Mẹo: Nếu nhạc không phát, hãy bật Chế độ Gốc để dùng trình phát của Google Drive."
                  >
                     <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
@@ -286,7 +303,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                       onLoad={() => setIsLoading(false)}
                       alt="Trang sách"
                     />
-                ) : isAudioUrl ? (
+                ) : (isAudioUrl && !useNativeViewer) ? (
                     <div className="w-full max-w-2xl bg-[#222] rounded-[3rem] p-12 border border-white/5 shadow-2xl flex flex-col items-center gap-8 animate-slide-up mt-12">
                         <div className="w-48 h-48 bg-indigo-600/10 rounded-[2.5rem] flex items-center justify-center text-indigo-500 border border-indigo-500/20 shadow-inner">
                             <div className="relative">
@@ -300,28 +317,49 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                             <h2 className="text-2xl font-black text-white tracking-tight">{flattenedReadingList[currentIndex]?.title || book.title}</h2>
                             <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[10px]">{book.author}</p>
                         </div>
-                        <div className="w-full bg-[#151515] p-6 rounded-[2rem] border border-white/5">
+                        
+                        <div className="w-full bg-[#151515] p-6 rounded-[2rem] border border-white/5 group relative">
+                            {isLoading && (
+                                <div className="absolute inset-0 bg-[#151515]/80 flex items-center justify-center z-10 rounded-[2rem]">
+                                     <Loader2 className="animate-spin text-indigo-500" size={20} />
+                                </div>
+                            )}
                             <audio 
                                 controls 
                                 className="w-full h-10 accent-indigo-500" 
                                 src={source}
                                 onCanPlay={() => setIsLoading(false)}
+                                onError={() => {
+                                    setLoadError("File nhạc từ Google Drive quá nặng hoặc bị giới hạn. Hãy bật 'Chế độ Gốc'.");
+                                    setIsLoading(false);
+                                }}
                                 autoPlay
                             >
                                 Trình duyệt của bạn không hỗ trợ phát âm thanh.
                             </audio>
                         </div>
+
+                        {loadError && (
+                            <div className="bg-red-900/20 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-400 text-xs animate-slide-up">
+                                <AlertCircle size={16} />
+                                <span>{loadError}</span>
+                                <button onClick={() => setUseNativeViewer(true)} className="ml-auto underline font-bold uppercase tracking-tighter">Bật Chế độ Gốc</button>
+                            </div>
+                        )}
+
                         <div className="flex gap-4 w-full">
                             <button onClick={handlePrev} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài trước</button>
                             <button onClick={handleNext} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài sau</button>
                         </div>
+                        <p className="text-[9px] text-gray-600 font-medium italic text-center">Mẹo: Nếu không nghe được, hãy nhấn nút "Chế độ Gốc" ở góc trên bên phải.</p>
                     </div>
                 ) : useNativeViewer ? (
-                    <div className="w-full h-[calc(100vh-80px)] max-w-6xl shadow-2xl rounded-lg overflow-hidden border border-white/5">
+                    <div className="w-full h-[calc(100vh-100px)] max-w-6xl shadow-2xl rounded-2xl overflow-hidden border border-white/5 bg-black">
                         <iframe 
                           src={iframeUrl} 
-                          className="w-full h-full border-0 bg-white"
-                          title="Native PDF Viewer"
+                          className="w-full h-full border-0"
+                          title="Native Previewer"
+                          onLoad={() => setIsLoading(false)}
                         />
                     </div>
                 ) : (
