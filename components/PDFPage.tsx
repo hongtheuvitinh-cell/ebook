@@ -11,53 +11,59 @@ interface PDFPageProps {
 
 const PDFPage: React.FC<PDFPageProps> = ({ pageNumber, width = 600, height, scale }) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [renderError, setRenderError] = useState(false);
 
-  // Reset trạng thái khi đổi trang
   useEffect(() => {
     setIsLoaded(false);
-  }, [pageNumber, sourceKey(width, scale)]);
+    setRenderError(false);
+  }, [pageNumber, sourceKey(width, scale)]); // Simplified dependency
 
-  function sourceKey(w: number, s: number) {
-      return `${w}-${s}`;
-  }
+  // Helper to detect scale changes for reset
+  function sourceKey(w: number, s: number) { return `${w}-${s}`; }
 
-  // Thuật toán giới hạn Canvas: 
-  // Nếu (width * scale * devicePixelRatio) quá lớn, nó sẽ làm sập trình duyệt.
-  // Chúng ta sẽ tính toán một tỷ lệ "an toàn".
+  /**
+   * GIỚI HẠN DIỆN TÍCH CANVAS (Memory Protection):
+   * Các trình duyệt thường lỗi nếu Canvas vượt quá ~16-30 triệu điểm ảnh.
+   * Với sách hình scan (thường 300-600 DPI), ta phải giới hạn cực độ.
+   */
   const safePixelRatio = useMemo(() => {
-    const rawRatio = window.devicePixelRatio || 1;
-    const totalPixels = width * scale * rawRatio;
+    const dpr = window.devicePixelRatio || 1;
+    const targetWidth = width * scale * dpr;
+    const maxSafeWidth = 1800; // Giới hạn chiều rộng vẽ thực tế để cứu RAM
     
-    // Nếu chiều rộng vẽ ra > 3000px, bắt đầu giảm tỷ lệ điểm ảnh để cứu RAM
-    if (totalPixels > 3000) {
-        return Math.max(1, 3000 / (width * scale));
+    if (targetWidth > maxSafeWidth) {
+      return maxSafeWidth / (width * scale);
     }
-    return Math.min(2, rawRatio); // Không bao giờ vượt quá 2 để giữ hiệu năng
+    return Math.min(1.5, dpr); // Không cần quá sắc nét để đánh đổi hiệu năng
   }, [width, scale]);
 
   const scaledWidth = width * scale;
   const scaledHeight = height ? height * scale : scaledWidth * 1.414;
 
+  if (renderError) {
+    return (
+      <div 
+        className="bg-[#333] border border-red-900/30 rounded flex flex-col items-center justify-center text-center p-10"
+        style={{ width: scaledWidth, height: scaledHeight }}
+      >
+        <p className="text-red-400 text-xs font-bold">Lỗi hiển thị hình ảnh nặng</p>
+        <p className="text-gray-500 text-[10px] mt-1">Hãy giảm thu phóng hoặc dùng trình xem gốc.</p>
+      </div>
+    );
+  }
+
   return (
     <div 
-      className="bg-white shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] border border-gray-200 relative overflow-hidden transition-all mx-auto w-fit h-fit rounded-sm"
+      className="bg-white shadow-2xl border border-black/20 relative overflow-hidden transition-opacity duration-300"
       style={{
-        minWidth: isLoaded ? 'auto' : `${scaledWidth}px`,
-        minHeight: isLoaded ? 'auto' : `${scaledHeight}px`,
+        width: scaledWidth,
+        minHeight: scaledHeight,
       }}
     >
         {!isLoaded && (
-          <div className="absolute inset-0 bg-[#f8f9fa] flex items-center justify-center z-10">
-             <div className="w-full h-full p-12 flex flex-col gap-6 opacity-20">
-                  <div className="w-3/4 h-6 bg-gray-300 rounded-full animate-pulse"></div>
-                  <div className="space-y-3">
-                    <div className="w-full h-3 bg-gray-200 rounded-full animate-pulse"></div>
-                    <div className="w-5/6 h-3 bg-gray-200 rounded-full animate-pulse"></div>
-                    <div className="w-4/6 h-3 bg-gray-200 rounded-full animate-pulse"></div>
-                  </div>
-                  <div className="flex-1 bg-gray-100 rounded-lg animate-pulse border border-gray-200"></div>
-                  <div className="w-1/2 h-3 bg-gray-200 rounded-full animate-pulse mx-auto"></div>
-             </div>
+          <div className="absolute inset-0 bg-[#222] flex flex-col items-center justify-center z-10">
+             <div className="w-8 h-8 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-2"></div>
+             <span className="text-[8px] text-gray-500 uppercase font-black tracking-tighter">Đang dựng hình...</span>
           </div>
         )}
 
@@ -65,21 +71,16 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNumber, width = 600, height, scal
             pageNumber={pageNumber}
             width={width}
             scale={scale}
-            // Dùng tỷ lệ an toàn đã tính toán
             devicePixelRatio={safePixelRatio}
             renderTextLayer={false}
             renderAnnotationLayer={false}
             canvasBackground="white"
-            className={`block transition-opacity duration-500 ease-in-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-            onRenderSuccess={() => {
-                setIsLoaded(true);
-                // Gợi ý trình duyệt giải phóng bộ nhớ thừa sau khi vẽ xong
-                const canvases = document.querySelectorAll('canvas');
-                if (canvases.length > 2) {
-                    // Cơ chế này giúp đảm bảo không có quá nhiều canvas ẩn được giữ lại
-                }
-            }} 
-            onLoadError={() => setIsLoaded(true)}
+            className={isLoaded ? 'opacity-100' : 'opacity-0'}
+            onRenderSuccess={() => setIsLoaded(true)} 
+            onRenderError={() => {
+              setRenderError(true);
+              setIsLoaded(true);
+            }}
             loading={null}
         />
     </div>
