@@ -41,7 +41,6 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
               level={level + 1} 
               expandedNodes={expandedNodes} 
               toggleExpand={toggleExpand} 
-              // Fix: use the onSelect prop instead of handleSelectNode which is not in this component's scope
               onSelect={onSelect} 
               isSelected={isSelected} 
             />
@@ -118,7 +117,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
 
-  // Tự động phát hiện loại file dựa vào URL
   const isImageUrl = useMemo(() => {
     const url = source.toLowerCase();
     return url.match(/\.(jpeg|jpg|gif|png|webp)/) || book.contentType === 'image';
@@ -140,6 +138,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     handleResize();
     return () => observer.disconnect();
   }, [isSidebarOpen]);
+
+  // Khi đổi trang, cuộn lại lên đầu
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [pageNumber, source]);
 
   const handleSelectNode = useCallback((node: any) => {
     const idx = flattenedReadingList.findIndex(item => item.id === node.id);
@@ -178,6 +183,12 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     }
   };
 
+  // Tính toán chiều rộng hiển thị tối ưu (mặc định 80% container)
+  const bookWidth = useMemo(() => {
+    if (!containerSize) return 800;
+    return containerSize.width * 0.8;
+  }, [containerSize]);
+
   return (
     <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
       {!isPresentationMode && (
@@ -201,14 +212,14 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col relative overflow-hidden bg-[#2a2a2a]">
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-[#151515]">
         {!isPresentationMode && (
           <div className="h-12 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0">
             <div className="flex items-center gap-3">
                 <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white"><Menu size={18} /></button>
                 <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded border border-white/5">
                     <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white"><ChevronLeft size={16} /></button>
-                    {!isImageUrl && <span className="text-[10px] text-gray-300 font-mono w-12 text-center">{pageNumber} / {numPages || '--'}</span>}
+                    {!isImageUrl && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
                     {isImageUrl && <span className="text-[10px] text-gray-300 font-mono px-2">Hình ảnh</span>}
                     <button onClick={handleNext} className="p-1 text-gray-500 hover:text-white"><ChevronRight size={16} /></button>
                 </div>
@@ -218,16 +229,16 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
                   className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
-                  title="Dùng bộ đọc gốc của trình duyệt (Nhanh nhất)"
+                  title="Bật/Tắt chế độ xem gốc để mở PDF cực nhanh"
                  >
-                    <Monitor size={14} /> {useNativeViewer ? 'Tắt xem gốc' : 'Bật xem gốc'}
+                    <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
                )}
                <div className="h-4 w-px bg-gray-800 mx-1"></div>
                <div className="flex items-center gap-1">
                   <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white"><ZoomOut size={14} /></button>
                   <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
-                  <button onClick={() => setScale(s => Math.min(s+0.1, 2))} className="p-1.5 text-gray-500 hover:text-white"><ZoomIn size={14} /></button>
+                  <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-500 hover:text-white"><ZoomIn size={14} /></button>
                </div>
                <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-500 hover:text-white"><Maximize size={16}/></button>
                <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded ${isAIActive ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'}`}><Sparkles size={16} /></button>
@@ -235,53 +246,56 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
           </div>
         )}
 
-        <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar flex flex-col">
+        <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar bg-[#111]">
             {isLoading && !loadError && !isImageUrl && !useNativeViewer && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a]">
                     <Loader2 className="animate-spin text-indigo-500 mb-4" size={32} />
-                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Đang tối ưu bộ nhớ cho sách hình...</p>
+                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Đang tối ưu khung hình...</p>
                 </div>
             )}
 
             {loadError && !useNativeViewer && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a] p-10 text-center">
                     <AlertTriangle className="text-red-500 mb-4" size={40} />
-                    <h3 className="text-white font-bold mb-2">Lỗi nạp tệp scan nặng</h3>
-                    <p className="text-gray-500 text-xs max-w-sm mb-6">Trình duyệt không đủ bộ nhớ để vẽ tệp này bằng JavaScript.</p>
-                    <button onClick={() => setUseNativeViewer(true)} className="px-4 py-2 bg-indigo-600 text-white text-xs rounded-lg flex items-center gap-2 mx-auto"><Monitor size={14} /> Chuyển sang Chế độ Xem gốc</button>
+                    <h3 className="text-white font-bold mb-2">Không thể nạp file scan</h3>
+                    <button onClick={() => setUseNativeViewer(true)} className="px-4 py-2 bg-indigo-600 text-white text-xs rounded-lg flex items-center gap-2 mx-auto mt-4"><Monitor size={14} /> Chuyển sang Chế độ Gốc</button>
                 </div>
             )}
 
-            <div className="flex-1 w-full flex items-start justify-center p-6 md:p-10">
+            <div className="min-h-full w-full flex flex-col items-center py-8 px-4 md:px-12">
                 {isImageUrl ? (
-                    /* TRƯỜNG HỢP LÀ FILE HÌNH: Dùng thẻ img để đạt tốc độ tối đa */
                     <img 
                       src={source} 
-                      className="max-w-full shadow-2xl transition-transform duration-200" 
-                      style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
+                      className="shadow-2xl transition-all duration-300 bg-white" 
+                      style={{ 
+                        width: `${bookWidth * scale}px`,
+                        maxWidth: 'none'
+                      }}
                       onLoad={() => setIsLoading(false)}
                       alt="Trang sách"
                     />
                 ) : useNativeViewer ? (
-                    /* TRƯỜNG HỢP XEM GỐC: Nhúng thẳng PDF vào trình duyệt */
-                    <iframe 
-                      src={`${source}#page=${pageNumber}&zoom=${scale * 100}`} 
-                      className="w-full h-full border-0 rounded-lg shadow-2xl bg-white"
-                      title="Native PDF Viewer"
-                    />
-                ) : (
-                    /* TRƯỜNG HỢP PDF SCAN: Dùng bộ đọc JavaScript đã tối ưu */
-                    <Document
-                        key={source} file={source}
-                        onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}
-                        options={pdfOptions} className="flex justify-center" loading={null}
-                    >
-                        <PDFPage 
-                          pageNumber={pageNumber} 
-                          width={containerSize?.width ? Math.min(containerSize.width * 0.9, 1000) : 600} 
-                          scale={scale} 
+                    <div className="w-full h-[calc(100vh-80px)] max-w-6xl shadow-2xl rounded-lg overflow-hidden border border-white/5">
+                        <iframe 
+                          src={`${source}#page=${pageNumber}&zoom=${scale * 100}`} 
+                          className="w-full h-full border-0 bg-white"
+                          title="Native PDF Viewer"
                         />
-                    </Document>
+                    </div>
+                ) : (
+                    <div className="flex justify-center w-full">
+                        <Document
+                            key={source} file={source}
+                            onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}
+                            options={pdfOptions} className="flex justify-center" loading={null}
+                        >
+                            <PDFPage 
+                              pageNumber={pageNumber} 
+                              width={bookWidth} 
+                              scale={scale} 
+                            />
+                        </Document>
+                    </div>
                 )}
             </div>
 
