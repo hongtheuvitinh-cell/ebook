@@ -278,11 +278,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                 </select>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Loại File</label>
-                <select value={newBook.contentType} onChange={e => setNewBook({...newBook, contentType: e.target.value as any})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-white outline-none">
-                  <option value="pdf">Sách PDF</option>
-                  <option value="image">Hình ảnh / Slide</option>
-                  <option value="audio">Audio / Podcast</option>
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Loại Nội dung</label>
+                <select value={newBook.contentType} onChange={e => setNewBook({...newBook, contentType: e.target.value as any})} className="w-full bg-[#0d0d0d] border border-white/10 rounded-xl p-4 text-xs text-indigo-400 font-black outline-none">
+                  <option value="pdf">📄 Sách PDF</option>
+                  <option value="image">🖼️ Hình ảnh / Slide</option>
+                  <option value="audio">🎧 Audio / Podcast</option>
                 </select>
               </div>
               <div className="md:col-span-8 space-y-2">
