@@ -15,7 +15,6 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
   const hasChildren = node.children && node.children.length > 0;
   const isExpanded = expandedNodes.has(node.id);
 
-  // Nhận diện icon: Nếu là link Drive hoặc có đuôi audio thì hiện icon Music
   const isAudio = useMemo(() => {
     const url = (node.url || '').toLowerCase();
     return url.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac|mpeg)/i) || 
@@ -79,7 +78,6 @@ const pdfOptions = {
 const getDirectUrl = (url: string, forIframe: boolean = false) => {
     if (!url) return '';
     if (url.includes('drive.google.com')) {
-        // Regex mạnh mẽ hơn để bắt ID kể cả khi có tham số query phía sau
         const idMatch = url.match(/(?:\/d\/|id=)([\w-]+)/);
         if (idMatch && idMatch[1]) {
             const fileId = idMatch[1];
@@ -142,7 +140,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     const url = source.toLowerCase();
     return url.match(/\.(mp3|wav|ogg|m4a|mp4|m4b|aac|mpeg)/) || 
            book.contentType === 'audio' || 
-           source.includes('docs.google.com/uc'); // Link drive đã parse
+           source.includes('docs.google.com/uc');
   }, [source, book.contentType]);
 
   useEffect(() => {
@@ -175,12 +173,10 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     const newSource = getDirectUrl(node.url || book.url);
     
     if (newSource !== source) {
+        setIsLoading(true); // Kích hoạt loading cho cả ảnh và pdf
         setSource(newSource);
-        setIsLoading(true);
         setLoadError(null);
         setPageNumber(1); 
-        // Nếu chuyển sang bài mới, reset lại chế độ xem native về mặc định (Web) 
-        // trừ khi file trước đó bị lỗi
     } else {
         setPageNumber(node.pageNumber || 1);
     }
@@ -254,12 +250,12 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         {!isPresentationMode && (
           <div className="h-12 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0">
             <div className="flex items-center gap-3">
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white"><Menu size={18} /></button>
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white transition-colors"><Menu size={18} /></button>
                 <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded border border-white/5">
-                    <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white"><ChevronLeft size={16} /></button>
+                    <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronLeft size={16} /></button>
                     {!isImageUrl && !isAudioUrl && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
                     {(isImageUrl || isAudioUrl) && <span className="text-[10px] text-gray-300 font-mono px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : 'Hình ảnh'}</span>}
-                    <button onClick={handleNext} className="p-1 text-gray-500 hover:text-white"><ChevronRight size={16} /></button>
+                    <button onClick={handleNext} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronRight size={16} /></button>
                 </div>
             </div>
             <div className="flex items-center gap-2">
@@ -267,7 +263,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
                   className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
-                  title="Mẹo: Nếu nhạc không phát, hãy bật Chế độ Gốc để dùng trình phát của Google Drive."
                  >
                     <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
@@ -287,22 +282,32 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         )}
 
         <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar bg-[#111]">
-            {isLoading && !loadError && !isImageUrl && !isAudioUrl && !useNativeViewer && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1a1a]">
-                    <Loader2 className="animate-spin text-indigo-500 mb-4" size={32} />
-                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Đang tải...</p>
+            {/* Lớp nạp đè (Loading Overlay) */}
+            {isLoading && !loadError && !useNativeViewer && (
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#151515]/90 backdrop-blur-sm transition-opacity duration-300">
+                    <div className="relative">
+                      <div className="w-16 h-16 border-4 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                         <div className="w-8 h-8 bg-indigo-600/20 rounded-lg animate-pulse"></div>
+                      </div>
+                    </div>
+                    <p className="mt-6 text-[11px] text-indigo-400 font-black uppercase tracking-[0.3em] animate-pulse">Đang nạp dữ liệu...</p>
                 </div>
             )}
 
             <div className="min-h-full w-full flex flex-col items-center py-8 px-4 md:px-12">
                 {isImageUrl ? (
-                    <img 
-                      src={source} 
-                      className="shadow-2xl transition-all duration-300 bg-white" 
-                      style={{ width: `${bookWidth * scale}px`, maxWidth: 'none' }}
-                      onLoad={() => setIsLoading(false)}
-                      alt="Trang sách"
-                    />
+                    <div className="relative group flex justify-center w-full">
+                        <img 
+                          src={source} 
+                          className={`shadow-[0_30px_70px_rgba(0,0,0,0.7)] transition-all duration-700 ease-in-out bg-white transform ${isLoading ? 'opacity-0 scale-95 blur-md' : 'opacity-100 scale-100 blur-0'}`} 
+                          style={{ width: `${bookWidth * scale}px`, maxWidth: 'none' }}
+                          onLoad={() => setIsLoading(false)}
+                          alt="Trang sách hình"
+                        />
+                        {/* Shadow giả lập trang giấy cho ảnh */}
+                        <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none"></div>
+                    </div>
                 ) : (isAudioUrl && !useNativeViewer) ? (
                     <div className="w-full max-w-2xl bg-[#222] rounded-[3rem] p-12 border border-white/5 shadow-2xl flex flex-col items-center gap-8 animate-slide-up mt-12">
                         <div className="w-48 h-48 bg-indigo-600/10 rounded-[2.5rem] flex items-center justify-center text-indigo-500 border border-indigo-500/20 shadow-inner">
@@ -319,18 +324,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                         </div>
                         
                         <div className="w-full bg-[#151515] p-6 rounded-[2rem] border border-white/5 group relative">
-                            {isLoading && (
-                                <div className="absolute inset-0 bg-[#151515]/80 flex items-center justify-center z-10 rounded-[2rem]">
-                                     <Loader2 className="animate-spin text-indigo-500" size={20} />
-                                </div>
-                            )}
                             <audio 
                                 controls 
                                 className="w-full h-10 accent-indigo-500" 
                                 src={source}
                                 onCanPlay={() => setIsLoading(false)}
                                 onError={() => {
-                                    setLoadError("File nhạc từ Google Drive quá nặng hoặc bị giới hạn. Hãy bật 'Chế độ Gốc'.");
+                                    setLoadError("File nhạc quá nặng hoặc bị giới hạn. Hãy bật 'Chế độ Gốc'.");
                                     setIsLoading(false);
                                 }}
                                 autoPlay
@@ -351,7 +351,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                             <button onClick={handlePrev} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài trước</button>
                             <button onClick={handleNext} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài sau</button>
                         </div>
-                        <p className="text-[9px] text-gray-600 font-medium italic text-center">Mẹo: Nếu không nghe được, hãy nhấn nút "Chế độ Gốc" ở góc trên bên phải.</p>
                     </div>
                 ) : useNativeViewer ? (
                     <div className="w-full h-[calc(100vh-100px)] max-w-6xl shadow-2xl rounded-2xl overflow-hidden border border-white/5 bg-black">
