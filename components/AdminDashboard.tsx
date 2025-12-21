@@ -54,6 +54,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
+  const toggleBookVisibility = async (bookId: string, currentStatus: boolean) => {
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('books')
+        .update({ is_visible: !currentStatus })
+        .eq('id', bookId);
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      alert("Lỗi cập nhật trạng thái: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategory.name.trim()) return;
@@ -312,11 +328,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ books, setBooks, catego
                       <span className="text-[7px] font-black uppercase mt-1">{book.contentType}</span>
                     </div>
                     <div>
-                      <h4 className="text-xl font-black text-white">{book.title} {!book.isVisible && <span className="text-[8px] bg-red-600 px-2 py-0.5 rounded text-white ml-2 uppercase tracking-widest">Đang ẩn</span>}</h4>
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{book.author} • {book.chapters.length} mục dữ liệu</p>
+                      <div className="flex items-center gap-3">
+                         <h4 className="text-xl font-black text-white">{book.title}</h4>
+                         {!book.isVisible ? (
+                           <span className="text-[8px] bg-red-600 px-2 py-0.5 rounded text-white uppercase tracking-widest font-black">Đang ẩn</span>
+                         ) : (
+                           <span className="text-[8px] bg-green-600 px-2 py-0.5 rounded text-white uppercase tracking-widest font-black">Công khai</span>
+                         )}
+                      </div>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">{book.author} • {book.chapters.length} mục dữ liệu</p>
                     </div>
                   </div>
                   <div className="flex gap-3">
+                    <button 
+                      onClick={() => toggleBookVisibility(book.id, book.isVisible)}
+                      className={`p-3 rounded-xl transition-all border ${!book.isVisible ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-gray-800 text-gray-400 border-white/5 hover:text-red-400'}`}
+                      title={!book.isVisible ? "Hiện sách (Công khai)" : "Ẩn sách (Riêng tư)"}
+                    >
+                      {!book.isVisible ? <Eye size={20} /> : <EyeOff size={20} />}
+                    </button>
                     <button 
                       onClick={() => setEditingChaptersBookId(editingChaptersBookId === book.id ? null : book.id)}
                       className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingChaptersBookId === book.id ? 'bg-indigo-600 text-white shadow-xl' : 'bg-gray-800 text-gray-400 hover:text-white border border-white/5'}`}
