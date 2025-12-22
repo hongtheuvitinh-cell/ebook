@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   Sparkles, Maximize, X, Menu, Loader2,
   ChevronDown, ChevronRight as ChevronRightIcon, FileText, FolderOpen, Book as BookIcon,
-  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music, AlertCircle
+  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music, AlertCircle, LogOut
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
@@ -81,6 +81,7 @@ const getDirectUrl = (url: string, forIframe: boolean = false) => {
         const idMatch = url.match(/(?:\/d\/|id=)([\w-]+)/);
         if (idMatch && idMatch[1]) {
             const fileId = idMatch[1];
+            // Luôn sử dụng /preview cho iframe để hỗ trợ thanh cuộn và toolbar của Google
             if (forIframe) {
                 return `https://drive.google.com/file/d/${fileId}/preview`;
             }
@@ -143,6 +144,10 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
            source.includes('docs.google.com/uc');
   }, [source, book.contentType]);
 
+  const isGoogleDriveSource = useMemo(() => {
+    return source.includes('drive.google.com') || source.includes('docs.google.com');
+  }, [source]);
+
   useEffect(() => {
     const rootIds = treeData.filter(n => n.children.length > 0).map(n => n.id);
     setExpandedNodes(new Set(rootIds));
@@ -161,10 +166,10 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   }, [isSidebarOpen]);
 
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && !useNativeViewer) {
       containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [pageNumber, source]);
+  }, [pageNumber, source, useNativeViewer]);
 
   const handleSelectNode = useCallback((node: any) => {
     const idx = flattenedReadingList.findIndex(item => item.id === node.id);
@@ -193,7 +198,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   };
 
   const handleNext = () => {
-    if (!isImageUrl && !isAudioUrl && pageNumber < numPages) { 
+    if (!isImageUrl && !isAudioUrl && !useNativeViewer && pageNumber < numPages) { 
       setPageNumber(prev => prev + 1); 
       return; 
     }
@@ -203,7 +208,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   };
 
   const handlePrev = () => {
-    if (!isImageUrl && !isAudioUrl && pageNumber > 1) { 
+    if (!isImageUrl && !isAudioUrl && !useNativeViewer && pageNumber > 1) { 
       setPageNumber(prev => prev - 1); 
       return; 
     }
@@ -214,7 +219,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const bookWidth = useMemo(() => {
     if (!containerSize) return 800;
-    // Tối ưu chiều rộng để không bị quá to trên màn hình lớn
     const baseWidth = containerSize.width;
     if (baseWidth > 1200) return baseWidth * 0.65;
     if (baseWidth > 800) return baseWidth * 0.8;
@@ -257,8 +261,8 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white transition-colors"><Menu size={18} /></button>
                 <div className="flex items-center gap-1 bg-black/40 px-2 py-1 rounded border border-white/5">
                     <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronLeft size={16} /></button>
-                    {!isImageUrl && !isAudioUrl && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
-                    {(isImageUrl || isAudioUrl) && <span className="text-[10px] text-gray-300 font-mono px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : 'Hình ảnh'}</span>}
+                    {!isImageUrl && !isAudioUrl && !useNativeViewer && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
+                    {(isImageUrl || isAudioUrl || useNativeViewer) && <span className="text-[10px] text-gray-300 font-mono px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : useNativeViewer ? 'Gốc' : 'Ảnh'}</span>}
                     <button onClick={handleNext} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronRight size={16} /></button>
                 </div>
             </div>
@@ -266,14 +270,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                {!isImageUrl && (
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
-                  className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
-                  title="Mẹo: Nếu nạp PDF chậm hoặc lỗi, hãy bật Chế độ Gốc để xem qua Google Drive."
+                  className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
                  >
                     <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
                )}
                <div className="h-4 w-px bg-gray-800 mx-1"></div>
-               {!isAudioUrl && (
+               {!isAudioUrl && !useNativeViewer && (
                  <div className="flex items-center gap-1">
                     <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white transition-all"><ZoomOut size={14} /></button>
                     <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
@@ -286,8 +289,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
           </div>
         )}
 
-        <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar bg-[#111]">
-            {/* Lớp nạp đè (Loading Overlay) mượt mà */}
+        <div ref={containerRef} className={`flex-1 overflow-hidden relative bg-[#111] flex flex-col`}>
             {isLoading && !loadError && !useNativeViewer && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#111]/80 backdrop-blur-sm transition-opacity duration-300">
                     <div className="relative">
@@ -300,7 +302,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 </div>
             )}
 
-            <div className="min-h-full w-full flex flex-col items-center py-8 px-4 md:py-12">
+            <div className={`flex-1 flex flex-col items-center overflow-y-auto custom-scrollbar ${useNativeViewer ? 'p-0' : 'py-8 px-4 md:py-12'}`}>
                 {isImageUrl ? (
                     <div className="relative group flex justify-center w-full">
                         <img 
@@ -356,12 +358,18 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                         </div>
                     </div>
                 ) : useNativeViewer ? (
-                    <div className="w-full h-[calc(100vh-100px)] max-w-6xl shadow-2xl rounded-2xl overflow-hidden border border-white/5 bg-black">
+                    <div className="w-full h-full flex flex-col bg-black overflow-hidden">
+                        {/* 
+                          CRITICAL: Để iframe của Google Drive cuộn được, nó cần height 100% 
+                          và cha nó không được để overflow-hidden nếu không có height xác định.
+                          Dùng flex-1 để nó chiếm trọn chiều cao màn hình.
+                        */}
                         <iframe 
                           src={iframeUrl} 
-                          className="w-full h-full border-0"
+                          className="w-full flex-1 border-0"
                           title="Native Previewer"
                           onLoad={() => setIsLoading(false)}
+                          allow="autoplay"
                         />
                     </div>
                 ) : (
