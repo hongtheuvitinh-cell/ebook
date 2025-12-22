@@ -173,7 +173,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     const newSource = getDirectUrl(node.url || book.url);
     
     if (newSource !== source) {
-        setIsLoading(true); // Kích hoạt loading cho cả ảnh và pdf
+        setIsLoading(true);
         setSource(newSource);
         setLoadError(null);
         setPageNumber(1); 
@@ -263,6 +263,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
                   className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
+                  title="Mẹo: Nếu nạp PDF chậm hoặc lỗi, hãy bật Chế độ Gốc để xem qua Google Drive."
                  >
                     <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
@@ -270,21 +271,21 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                <div className="h-4 w-px bg-gray-800 mx-1"></div>
                {!isAudioUrl && (
                  <div className="flex items-center gap-1">
-                    <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white"><ZoomOut size={14} /></button>
+                    <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white transition-all"><ZoomOut size={14} /></button>
                     <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
-                    <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-500 hover:text-white"><ZoomIn size={14} /></button>
+                    <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-500 hover:text-white transition-all"><ZoomIn size={14} /></button>
                  </div>
                )}
-               <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-500 hover:text-white"><Maximize size={16}/></button>
-               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded ${isAIActive ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'}`}><Sparkles size={16} /></button>
+               <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-500 hover:text-white transition-all"><Maximize size={16}/></button>
+               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded ${isAIActive ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'} transition-all`}><Sparkles size={16} /></button>
             </div>
           </div>
         )}
 
         <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar bg-[#111]">
-            {/* Lớp nạp đè (Loading Overlay) */}
+            {/* Lớp nạp đè (Loading Overlay) mượt mà */}
             {isLoading && !loadError && !useNativeViewer && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#151515]/90 backdrop-blur-sm transition-opacity duration-300">
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#151515]/80 backdrop-blur-sm transition-opacity duration-300">
                     <div className="relative">
                       <div className="w-16 h-16 border-4 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin"></div>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -305,7 +306,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                           onLoad={() => setIsLoading(false)}
                           alt="Trang sách hình"
                         />
-                        {/* Shadow giả lập trang giấy cho ảnh */}
                         <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none"></div>
                     </div>
                 ) : (isAudioUrl && !useNativeViewer) ? (
@@ -343,7 +343,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                             <div className="bg-red-900/20 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-400 text-xs animate-slide-up">
                                 <AlertCircle size={16} />
                                 <span>{loadError}</span>
-                                <button onClick={() => setUseNativeViewer(true)} className="ml-auto underline font-bold uppercase tracking-tighter">Bật Chế độ Gốc</button>
+                                <button onClick={() => setUseNativeViewer(true)} className="ml-auto underline font-bold uppercase tracking-tighter hover:text-red-300 transition-colors">Bật Chế độ Gốc</button>
                             </div>
                         )}
 
