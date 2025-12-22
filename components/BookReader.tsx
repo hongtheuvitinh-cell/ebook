@@ -214,7 +214,11 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
 
   const bookWidth = useMemo(() => {
     if (!containerSize) return 800;
-    return containerSize.width * 0.8;
+    // Tối ưu chiều rộng để không bị quá to trên màn hình lớn
+    const baseWidth = containerSize.width;
+    if (baseWidth > 1200) return baseWidth * 0.65;
+    if (baseWidth > 800) return baseWidth * 0.8;
+    return baseWidth * 0.95;
   }, [containerSize]);
 
   const iframeUrl = useMemo(() => {
@@ -223,7 +227,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   }, [currentIndex, book.url, flattenedReadingList]);
 
   return (
-    <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-[#1a1a1a]'}`}>
+    <div className={`flex h-full w-full ${isPresentationMode ? 'bg-[#0a0a0a]' : 'bg-[#1a1a1a]'}`}>
       {!isPresentationMode && (
         <div className={`bg-[#222] border-r border-black flex flex-col transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-0'}`}>
             <div className="p-4 border-b border-gray-800 shrink-0">
@@ -246,12 +250,12 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col relative overflow-hidden bg-[#151515]">
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-[#111]">
         {!isPresentationMode && (
-          <div className="h-12 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0">
+          <div className="h-12 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0 shadow-lg">
             <div className="flex items-center gap-3">
                 <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white transition-colors"><Menu size={18} /></button>
-                <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded border border-white/5">
+                <div className="flex items-center gap-1 bg-black/40 px-2 py-1 rounded border border-white/5">
                     <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronLeft size={16} /></button>
                     {!isImageUrl && !isAudioUrl && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
                     {(isImageUrl || isAudioUrl) && <span className="text-[10px] text-gray-300 font-mono px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : 'Hình ảnh'}</span>}
@@ -285,7 +289,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar bg-[#111]">
             {/* Lớp nạp đè (Loading Overlay) mượt mà */}
             {isLoading && !loadError && !useNativeViewer && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#151515]/80 backdrop-blur-sm transition-opacity duration-300">
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#111]/80 backdrop-blur-sm transition-opacity duration-300">
                     <div className="relative">
                       <div className="w-16 h-16 border-4 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin"></div>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -296,17 +300,16 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                 </div>
             )}
 
-            <div className="min-h-full w-full flex flex-col items-center py-8 px-4 md:px-12">
+            <div className="min-h-full w-full flex flex-col items-center py-8 px-4 md:py-12">
                 {isImageUrl ? (
                     <div className="relative group flex justify-center w-full">
                         <img 
                           src={source} 
-                          className={`shadow-[0_30px_70px_rgba(0,0,0,0.7)] transition-all duration-700 ease-in-out bg-white transform ${isLoading ? 'opacity-0 scale-95 blur-md' : 'opacity-100 scale-100 blur-0'}`} 
+                          className={`shadow-[0_40px_100px_rgba(0,0,0,0.8)] transition-all duration-700 ease-in-out bg-white transform origin-top ${isLoading ? 'opacity-0 scale-95 blur-md' : 'opacity-100 scale-100 blur-0'}`} 
                           style={{ width: `${bookWidth * scale}px`, maxWidth: 'none' }}
                           onLoad={() => setIsLoading(false)}
                           alt="Trang sách hình"
                         />
-                        <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none"></div>
                     </div>
                 ) : (isAudioUrl && !useNativeViewer) ? (
                     <div className="w-full max-w-2xl bg-[#222] rounded-[3rem] p-12 border border-white/5 shadow-2xl flex flex-col items-center gap-8 animate-slide-up mt-12">
@@ -375,7 +378,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             </div>
 
             {isPresentationMode && (
-                 <button onClick={() => setIsPresentationMode(false)} className="fixed top-6 right-6 p-3 bg-gray-900 text-white rounded-full border border-gray-700 z-50 hover:bg-red-600 transition-all">
+                 <button onClick={() => setIsPresentationMode(false)} className="fixed top-6 right-6 p-3 bg-gray-900 text-white rounded-full border border-gray-700 z-50 hover:bg-red-600 transition-all shadow-2xl">
                     <X size={20} />
                  </button>
             )}
