@@ -19,7 +19,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'library' | 'reader' | 'admin'>('library');
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-  // Check for API key presence if needed by platform
+  // Mặc định coi như đã có nếu không có window.aistudio, ngược lại thì check
   const [hasApiKey, setHasApiKey] = useState(true);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ const App: React.FC = () => {
     fetchData();
     handleVisitorCounter();
     
-    // Check if we need to show API key selection (specific to some interactive environments)
+    // Kiểm tra trạng thái API Key từ môi trường aistudio
     if (window.aistudio) {
         window.aistudio.hasSelectedApiKey().then(setHasApiKey);
     }
@@ -89,8 +89,13 @@ const App: React.FC = () => {
 
   const handleOpenKeySelector = async () => {
       if (window.aistudio) {
-          await window.aistudio.openSelectKey();
-          setHasApiKey(true);
+          try {
+              await window.aistudio.openSelectKey();
+              // Sau khi kích hoạt dialog, tạm thời coi như đã có để UI mượt mà
+              setHasApiKey(true);
+          } catch (e) {
+              console.error("Lỗi khi mở trình chọn Key", e);
+          }
       }
   };
 
@@ -109,7 +114,7 @@ const App: React.FC = () => {
                 {!hasApiKey && window.aistudio && (
                     <button 
                         onClick={handleOpenKeySelector}
-                        className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-white transition-all mr-2"
+                        className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-white transition-all mr-2 shadow-lg shadow-amber-500/5 animate-pulse"
                     >
                         <Key size={14} /> <span>Chọn API Key</span>
                     </button>
@@ -133,7 +138,7 @@ const App: React.FC = () => {
                     </button>
                     {!hasApiKey && window.aistudio && (
                         <button onClick={handleOpenKeySelector} className="bg-amber-600/90 hover:bg-amber-600 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl">
-                            <Key size={12} /> API Key
+                            <Key size={12} /> Cấu hình AI
                         </button>
                     )}
                 </div>
