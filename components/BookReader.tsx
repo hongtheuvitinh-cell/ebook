@@ -3,13 +3,12 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from '
 import { Document } from 'react-pdf';
 import { 
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
-  Sparkles, Maximize, X, Menu, Loader2,
+  Maximize, X, Menu, Loader2,
   ChevronDown, ChevronRight as ChevronRightIcon, FileText, FolderOpen, Book as BookIcon,
-  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music, AlertCircle, LogOut, Key
+  Monitor, Headphones, Music
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
-import AIAssistant from './AIAssistant';
 
 const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isSelected, bookType }: any) => {
   const hasChildren = node.children && node.children.length > 0;
@@ -90,6 +89,11 @@ const getDirectUrl = (url: string, forIframe: boolean = false) => {
     return url;
 };
 
+// Hàm kiểm tra link có phải Google Drive không
+const checkIsDrive = (url: string) => {
+    return url && (url.includes('drive.google.com') || url.includes('docs.google.com'));
+};
+
 const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const treeData = useMemo(() => {
     const map: Record<string, any> = {};
@@ -120,12 +124,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [numPages, setNumPages] = useState<number>(1); 
   const [scale, setScale] = useState(1.0);
-  const [isAIActive, setIsAIActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [useNativeViewer, setUseNativeViewer] = useState(false);
+  
+  // Tự động nhận diện Google Drive để khởi tạo chế độ xem
+  const [useNativeViewer, setUseNativeViewer] = useState(() => checkIsDrive(book.url));
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -170,8 +175,17 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     const idx = flattenedReadingList.findIndex(item => item.id === node.id);
     if (idx !== -1) setCurrentIndex(idx);
     
-    const newSource = getDirectUrl(node.url || book.url);
+    const nodeUrl = node.url || book.url;
+    const newSource = getDirectUrl(nodeUrl);
     
+    // TỰ ĐỘNG NHẬN DIỆN GOOGLE DRIVE:
+    // Nếu là link drive thì bật Chế độ Web (native viewer)
+    if (checkIsDrive(nodeUrl)) {
+        setUseNativeViewer(true);
+    } else {
+        setUseNativeViewer(false);
+    }
+
     if (newSource !== source) {
         setIsLoading(true);
         setSource(newSource);
@@ -279,7 +293,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                  </div>
                )}
                <button onClick={() => setIsPresentationMode(true)} className="p-2 text-slate-400 hover:text-white transition-all"><Maximize size={16}/></button>
-               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded-lg transition-all ${isAIActive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-700/50 text-slate-400 border border-white/5 hover:text-white'}`}><Sparkles size={16} /></button>
             </div>
           </div>
         )}
@@ -359,8 +372,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                  </button>
             )}
         </div>
-
-        <AIAssistant isVisible={isAIActive} onClose={() => setIsAIActive(false)} pageText="" />
       </div>
     </div>
   );
