@@ -32,11 +32,8 @@ const App: React.FC = () => {
     hasIncrementedRef.current = true;
     
     try {
-      // 1. Gọi lệnh tăng
       await supabase.rpc('increment_visit');
-      
-      // 2. Lấy lại giá trị thực tế từ DB để cập nhật UI (Tránh kẹt số 92)
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('site_stats')
         .select('val')
         .eq('id', 'total_visits')
@@ -46,8 +43,7 @@ const App: React.FC = () => {
         setVisitorCount(Number(data.val));
       }
     } catch (err) {
-      console.error("Visitor counter error:", err);
-      // Fallback: Nếu lỗi vẫn cố lấy số hiện tại
+      console.error("Visitor error:", err);
       const { data } = await supabase.from('site_stats').select('val').eq('id', 'total_visits').single();
       if (data) setVisitorCount(Number(data.val));
     }
@@ -83,17 +79,22 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#1a1a1a] text-white font-sans flex flex-col">
+    <div className="h-screen w-screen overflow-hidden bg-[#020617] text-slate-100 font-sans flex flex-col">
       {currentView !== 'reader' && (
-        <nav className="h-16 border-b border-gray-800 bg-[#252525] flex items-center justify-between px-6 shrink-0 z-10">
-            <div className="flex items-center gap-2 font-bold text-xl tracking-wide cursor-pointer" onClick={() => setCurrentView('library')}>
-                <span className="text-indigo-500">Kho tàng tri thức</span>
-                <span>E-Book</span>
+        <nav className="h-14 border-b border-white/5 bg-slate-900/80 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-10">
+            <div className="flex items-center gap-2 font-bold text-lg tracking-tight cursor-pointer" onClick={() => setCurrentView('library')}>
+                <div className="w-7 h-7 bg-indigo-600 rounded flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  <User size={16} className="text-white" />
+                </div>
+                <span className="text-white">Kho tàng</span>
+                <span className="text-indigo-400">E-Book</span>
             </div>
-            <div className="flex gap-2">
-                <button onClick={() => setCurrentView('library')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${currentView === 'library' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}><User size={16} /> <span>Người đọc</span></button>
-                <button onClick={() => setCurrentView('admin')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${currentView === 'admin' ? 'bg-indigo-900/50 text-indigo-300 border border-indigo-500/30' : 'text-gray-400 hover:text-white'}`}><ShieldCheck size={16} /> <span>Quản trị</span></button>
-                {session && <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-red-900/20 text-red-400 border border-red-500/20 hover:bg-red-900/40 ml-2"><LogOut size={16} /></button>}
+            <div className="flex gap-1.5">
+                <button onClick={() => setCurrentView('library')} className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${currentView === 'library' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>Người đọc</button>
+                <button onClick={() => setCurrentView('admin')} className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${currentView === 'admin' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                   <ShieldCheck size={14} /> <span>Quản trị</span>
+                </button>
+                {session && <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs bg-red-900/10 text-red-400 border border-red-500/20 hover:bg-red-900/20 ml-2 transition-all"><LogOut size={14} /></button>}
             </div>
         </nav>
       )}
@@ -102,14 +103,19 @@ const App: React.FC = () => {
         {currentView === 'library' && ( <div className="h-full overflow-y-auto custom-scrollbar pb-12"><Library books={books.filter(b => b.isVisible)} categories={categories} onSelectBook={b => { setSelectedBook(b); setCurrentView('reader'); }} /></div> )}
         {currentView === 'reader' && selectedBook && (
             <div className="h-full w-full relative">
-                <button onClick={() => { setSelectedBook(null); setCurrentView('library'); }} className="absolute top-4 left-20 z-50 bg-black/50 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-sm backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all"><LogOut size={14} /> Thoát</button>
+                <button onClick={() => { setSelectedBook(null); setCurrentView('library'); }} className="absolute top-4 left-20 z-50 bg-slate-900/60 hover:bg-slate-800 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl group">
+                   <LogOut size={12} className="group-hover:-translate-x-1 transition-transform" /> Quay lại
+                </button>
                 <BookReader book={selectedBook} />
             </div>
         )}
         {currentView !== 'reader' && (
-            <footer className="h-10 bg-[#151515] border-t border-gray-800 flex items-center justify-between px-6 text-xs text-gray-500 shrink-0 select-none">
-                <div>&copy; 2024 Kho tàng tri thức E-Book.</div>
-                <div className="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded-full border border-gray-700"><Users size={12} className="text-indigo-400" /><span className="text-gray-300 font-mono">{visitorCount.toLocaleString()}</span></div>
+            <footer className="h-9 bg-slate-950 border-t border-white/5 flex items-center justify-between px-6 text-[9px] text-slate-500 shrink-0 select-none">
+                <div className="font-medium tracking-wide uppercase opacity-70">&copy; 2024 Kho tàng tri thức E-Book • Digital Library Pro</div>
+                <div className="flex items-center gap-2 bg-slate-900/80 px-2.5 py-0.5 rounded-full border border-white/5 shadow-inner">
+                   <Users size={10} className="text-indigo-400" />
+                   <span className="text-slate-300 font-mono font-bold tracking-tighter">{visitorCount.toLocaleString()}</span>
+                </div>
             </footer>
         )}
       </main>
