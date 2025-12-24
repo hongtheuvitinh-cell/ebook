@@ -1,8 +1,14 @@
 
 import { GoogleGenAI, GenerateContentResponse, Tool } from "@google/genai";
 
-// Helper to get Gemini client with fresh API Key
-const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// Luôn tạo instance mới để đảm bảo lấy API_KEY vừa được cập nhật từ window.aistudio
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY_MISSING");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const analyzeText = async (
   text: string, 
@@ -15,16 +21,16 @@ export const analyzeText = async (
       model: modelName,
       contents: `Context from book page:\n"${text}"\n\nUser Question/Instruction:\n${prompt}`,
       config: {
-        systemInstruction: "You are a helpful literary assistant and reading companion. Help the user understand the text provided from the book. Be concise and insightful.",
+        systemInstruction: "You are a helpful literary assistant and reading companion. Help the user understand the text provided from the book. Be concise and insightful. Use Vietnamese for response.",
       }
     });
-    return response.text || "Sorry, I couldn't generate a response.";
+    return response.text || "Xin lỗi, tôi không thể tạo phản hồi lúc này.";
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    if (error.message?.includes("Requested entity was not found")) {
-        return "Lỗi: Vui lòng chọn API Key (Paid) để tiếp tục sử dụng tính năng AI.";
+    if (error.message === "API_KEY_MISSING" || error.message?.includes("Requested entity was not found")) {
+      return "ERROR_API_KEY";
     }
-    return "An error occurred while contacting the AI.";
+    return "Đã xảy ra lỗi khi kết nối với AI. Vui lòng thử lại.";
   }
 };
 
@@ -40,16 +46,16 @@ export const chatWithBook = async (
       history: [
         {
           role: 'user',
-          parts: [{ text: `I am reading a book. Here is the context of the page I am currently reading: "${context}". I might ask questions about it.` }]
+          parts: [{ text: `I am reading a book. Here is the context of the page: "${context}". Please answer in Vietnamese.` }]
         },
         {
           role: 'model',
-          parts: [{ text: "Understood. I am ready to help you with the book context provided." }]
+          parts: [{ text: "Tôi đã hiểu nội dung trang sách. Tôi sẵn sàng hỗ trợ bạn bằng tiếng Việt." }]
         },
         ...history
       ],
       config: {
-        systemInstruction: "You are a helpful reading companion. Answer questions based on the provided book context."
+        systemInstruction: "You are a helpful reading companion. Answer questions based on the provided book context in Vietnamese."
       }
     });
 
@@ -57,8 +63,8 @@ export const chatWithBook = async (
     return result.text || "";
   } catch (error: any) {
     console.error("Chat Error:", error);
-    if (error.message?.includes("Requested entity was not found")) {
-        return "Lỗi: Vui lòng chọn API Key (Paid) từ trình quản lý để sử dụng chat.";
+    if (error.message === "API_KEY_MISSING" || error.message?.includes("Requested entity was not found")) {
+      return "ERROR_API_KEY";
     }
     throw error;
   }
@@ -96,17 +102,17 @@ export const analyzeNotebookSources = async (
       history: [
         {
             role: 'user',
-            parts: [{ text: `You are an intelligent research assistant (like NotebookLM). \n${sourceContext}` }]
+            parts: [{ text: `You are an intelligent research assistant. Answer in Vietnamese. \n${sourceContext}` }]
         },
         {
             role: 'model',
-            parts: [{ text: "I have received your sources. I am ready to analyze them, synthesize information, or answer questions based on these specific documents and links." }]
+            parts: [{ text: "Tôi đã nhận được các nguồn tài liệu của bạn. Tôi sẵn sàng phân tích chúng bằng tiếng Việt." }]
         },
         ...history
       ],
       config: {
         tools: tools,
-        systemInstruction: "You are a research assistant. Synthesize information from the provided sources. If a URL is provided, use Google Search grounding to understand its content. Cite your sources when possible.",
+        systemInstruction: "You are a research assistant. Synthesize information from the provided sources. Answer in Vietnamese.",
       }
     });
 
@@ -121,16 +127,16 @@ export const analyzeNotebookSources = async (
         
         if (groundingLinks.length > 0) {
             const uniqueLinks = [...new Set(groundingLinks)];
-            text += "\n\n**Sources & References:**\n" + uniqueLinks.join("\n");
+            text += "\n\n**Nguồn tham khảo:**\n" + uniqueLinks.join("\n");
         }
     }
 
     return text;
   } catch (error: any) {
     console.error("Notebook Analysis Error:", error);
-    if (error.message?.includes("Requested entity was not found")) {
-        return "Lỗi API: Hãy kiểm tra và chọn lại API Key hợp lệ.";
+    if (error.message === "API_KEY_MISSING" || error.message?.includes("Requested entity was not found")) {
+      return "ERROR_API_KEY";
     }
-    return "Error processing your notebook sources. Please try again.";
+    return "Lỗi khi xử lý nguồn Notebook. Vui lòng thử lại.";
   }
 };
