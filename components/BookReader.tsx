@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
   Sparkles, Maximize, X, Menu, Loader2,
   ChevronDown, ChevronRight as ChevronRightIcon, FileText, FolderOpen, Book as BookIcon,
-  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music, AlertCircle, LogOut
+  AlertTriangle, ExternalLink, RefreshCcw, Eye, Monitor, Play, Pause, Volume2, Headphones, Music, AlertCircle, LogOut, Key
 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import PDFPage from './PDFPage';
@@ -25,21 +25,21 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
   return (
     <div className="select-none">
       <div 
-        className={`flex items-center gap-2 py-1.5 px-3 rounded-lg cursor-pointer transition-all duration-200 ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
-        style={{ paddingLeft: `${level * 10 + 10}px` }}
+        className={`flex items-center gap-2.5 py-2 px-3.5 rounded-xl cursor-pointer transition-all duration-200 ${isSelected ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
+        style={{ paddingLeft: `${level * 12 + 12}px` }}
         onClick={() => {
           if (hasChildren) toggleExpand(node.id);
           onSelect(node);
         }}
       >
         {hasChildren ? (
-          <span className="shrink-0">{isExpanded ? <ChevronDown size={12} /> : <ChevronRightIcon size={12} />}</span>
+          <span className="shrink-0">{isExpanded ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}</span>
         ) : (
-          <span className="w-3 flex justify-center shrink-0 opacity-30">
-            {isAudio ? <Music size={11}/> : <FileText size={11}/>}
+          <span className="w-4 flex justify-center shrink-0 opacity-40">
+            {isAudio ? <Music size={13}/> : <FileText size={13}/>}
           </span>
         )}
-        <span className={`text-[10.5px] truncate tracking-tight leading-tight ${hasChildren ? 'font-black' : 'font-medium'}`}>{node.title}</span>
+        <span className={`text-[12px] truncate tracking-tight leading-snug ${hasChildren ? 'font-black' : 'font-semibold'}`}>{node.title}</span>
       </div>
       {hasChildren && isExpanded && (
         <div className="mt-0.5">
@@ -228,15 +228,15 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   return (
     <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-slate-950'}`}>
       {!isPresentationMode && (
-        <div className={`bg-slate-900 border-r border-white/5 flex flex-col transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-60 shadow-2xl' : 'w-0 shadow-none'}`}>
-            <div className="p-4 border-b border-white/5 shrink-0 bg-slate-900/80">
+        <div className={`bg-slate-900 border-r border-white/5 flex flex-col transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-64 shadow-2xl' : 'w-0 shadow-none'}`}>
+            <div className="p-5 border-b border-white/5 shrink-0 bg-slate-900/80">
                 <div className="flex items-center gap-2 text-indigo-400 mb-1.5 opacity-80">
-                    <FolderOpen size={13} />
-                    <span className="text-[8px] font-black uppercase tracking-[0.2em]">Học liệu bài giảng</span>
+                    <FolderOpen size={14} />
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em]">Học liệu bài giảng</span>
                 </div>
-                <h1 className="font-bold text-white text-xs line-clamp-1 tracking-tight">{book.title}</h1>
+                <h1 className="font-bold text-white text-[13px] line-clamp-2 tracking-tight leading-tight">{book.title}</h1>
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-0.5">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
                 {treeData.map(node => (
                   <TreeItem 
                     key={node.id} node={node} level={0} 
