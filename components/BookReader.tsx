@@ -25,21 +25,21 @@ const TreeItem = memo(({ node, level, expandedNodes, toggleExpand, onSelect, isS
   return (
     <div className="select-none">
       <div 
-        className={`flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-all duration-150 ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
+        className={`flex items-center gap-2 py-1.5 px-3 rounded-lg cursor-pointer transition-all duration-200 ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
+        style={{ paddingLeft: `${level * 10 + 10}px` }}
         onClick={() => {
           if (hasChildren) toggleExpand(node.id);
           onSelect(node);
         }}
       >
         {hasChildren ? (
-          <span className="shrink-0">{isExpanded ? <ChevronDown size={14} /> : <ChevronRightIcon size={14} />}</span>
+          <span className="shrink-0">{isExpanded ? <ChevronDown size={12} /> : <ChevronRightIcon size={12} />}</span>
         ) : (
-          <span className="w-3.5 flex justify-center shrink-0 opacity-40">
-            {isAudio ? <Music size={12}/> : <FileText size={12}/>}
+          <span className="w-3 flex justify-center shrink-0 opacity-30">
+            {isAudio ? <Music size={11}/> : <FileText size={11}/>}
           </span>
         )}
-        <span className={`text-[11px] truncate ${hasChildren ? 'font-bold' : 'font-normal'}`}>{node.title}</span>
+        <span className={`text-[10.5px] truncate tracking-tight leading-tight ${hasChildren ? 'font-black' : 'font-medium'}`}>{node.title}</span>
       </div>
       {hasChildren && isExpanded && (
         <div className="mt-0.5">
@@ -81,7 +81,6 @@ const getDirectUrl = (url: string, forIframe: boolean = false) => {
         const idMatch = url.match(/(?:\/d\/|id=)([\w-]+)/);
         if (idMatch && idMatch[1]) {
             const fileId = idMatch[1];
-            // Luôn sử dụng /preview cho iframe để hỗ trợ thanh cuộn và toolbar của Google
             if (forIframe) {
                 return `https://drive.google.com/file/d/${fileId}/preview`;
             }
@@ -143,10 +142,6 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
            book.contentType === 'audio' || 
            source.includes('docs.google.com/uc');
   }, [source, book.contentType]);
-
-  const isGoogleDriveSource = useMemo(() => {
-    return source.includes('drive.google.com') || source.includes('docs.google.com');
-  }, [source]);
 
   useEffect(() => {
     const rootIds = treeData.filter(n => n.children.length > 0).map(n => n.id);
@@ -231,17 +226,17 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   }, [currentIndex, book.url, flattenedReadingList]);
 
   return (
-    <div className={`flex h-full w-full ${isPresentationMode ? 'bg-[#0a0a0a]' : 'bg-[#1a1a1a]'}`}>
+    <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-slate-950'}`}>
       {!isPresentationMode && (
-        <div className={`bg-[#222] border-r border-black flex flex-col transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-0'}`}>
-            <div className="p-4 border-b border-gray-800 shrink-0">
-                <div className="flex items-center gap-2 text-indigo-400 mb-1">
-                    <FolderOpen size={14} />
-                    <span className="text-[9px] font-black uppercase tracking-widest">Danh mục bài học</span>
+        <div className={`bg-slate-900 border-r border-white/5 flex flex-col transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-60 shadow-2xl' : 'w-0 shadow-none'}`}>
+            <div className="p-4 border-b border-white/5 shrink-0 bg-slate-900/80">
+                <div className="flex items-center gap-2 text-indigo-400 mb-1.5 opacity-80">
+                    <FolderOpen size={13} />
+                    <span className="text-[8px] font-black uppercase tracking-[0.2em]">Học liệu bài giảng</span>
                 </div>
-                <h1 className="font-bold text-white text-xs line-clamp-1">{book.title}</h1>
+                <h1 className="font-bold text-white text-xs line-clamp-1 tracking-tight">{book.title}</h1>
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-0.5">
                 {treeData.map(node => (
                   <TreeItem 
                     key={node.id} node={node} level={0} 
@@ -254,51 +249,46 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col relative overflow-hidden bg-[#111]">
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-900">
         {!isPresentationMode && (
-          <div className="h-12 bg-[#1e1e1e] border-b border-black flex items-center justify-between px-4 z-20 shrink-0 shadow-lg">
+          <div className="h-12 bg-slate-800/90 backdrop-blur-3xl border-b border-white/5 flex items-center justify-between px-5 z-20 shrink-0 shadow-xl">
             <div className="flex items-center gap-3">
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white transition-colors"><Menu size={18} /></button>
-                <div className="flex items-center gap-1 bg-black/40 px-2 py-1 rounded border border-white/5">
-                    <button onClick={handlePrev} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronLeft size={16} /></button>
-                    {!isImageUrl && !isAudioUrl && !useNativeViewer && <span className="text-[10px] text-gray-300 font-mono w-16 text-center">{pageNumber} / {numPages || '--'}</span>}
-                    {(isImageUrl || isAudioUrl || useNativeViewer) && <span className="text-[10px] text-gray-300 font-mono px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : useNativeViewer ? 'Gốc' : 'Ảnh'}</span>}
-                    <button onClick={handleNext} className="p-1 text-gray-500 hover:text-white transition-all"><ChevronRight size={16} /></button>
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-slate-400 hover:text-white transition-all"><Menu size={18} /></button>
+                <div className="flex items-center gap-1 bg-slate-950/40 p-1 rounded-lg border border-white/5">
+                    <button onClick={handlePrev} className="p-1 text-slate-500 hover:text-white rounded transition-all"><ChevronLeft size={16} /></button>
+                    {!isImageUrl && !isAudioUrl && !useNativeViewer && <span className="text-[10px] text-slate-200 font-mono font-bold w-16 text-center tracking-tighter">{pageNumber} <span className="text-slate-500 opacity-50 mx-0.5">/</span> {numPages || '--'}</span>}
+                    {(isImageUrl || isAudioUrl || useNativeViewer) && <span className="text-[8px] text-indigo-400 font-black px-2 uppercase tracking-widest">{isAudioUrl ? 'Audio' : useNativeViewer ? 'Gốc' : 'Media'}</span>}
+                    <button onClick={handleNext} className="p-1 text-slate-500 hover:text-white rounded transition-all"><ChevronRight size={16} /></button>
                 </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
                {!isImageUrl && (
                  <button 
                   onClick={() => setUseNativeViewer(!useNativeViewer)} 
-                  className={`p-1.5 rounded flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-800'}`}
+                  className={`h-8 px-3 rounded-lg flex items-center gap-2 text-[9px] font-black uppercase tracking-widest transition-all ${useNativeViewer ? 'bg-indigo-600 text-white' : 'bg-slate-700/50 text-slate-400 border border-white/5 hover:text-white'}`}
                  >
-                    <Monitor size={14} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
+                    <Monitor size={12} /> {useNativeViewer ? 'Chế độ Web' : 'Chế độ Gốc'}
                  </button>
                )}
-               <div className="h-4 w-px bg-gray-800 mx-1"></div>
+               <div className="h-4 w-px bg-white/5 mx-1"></div>
                {!isAudioUrl && !useNativeViewer && (
-                 <div className="flex items-center gap-1">
-                    <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1.5 text-gray-500 hover:text-white transition-all"><ZoomOut size={14} /></button>
-                    <span className="text-[10px] text-gray-500 w-8 text-center">{Math.round(scale * 100)}%</span>
-                    <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1.5 text-gray-500 hover:text-white transition-all"><ZoomIn size={14} /></button>
+                 <div className="flex items-center gap-0.5 bg-slate-950/20 p-0.5 rounded-lg border border-white/5">
+                    <button onClick={() => setScale(s => Math.max(s-0.1, 0.5))} className="p-1 text-slate-400 hover:text-white transition-all"><ZoomOut size={14} /></button>
+                    <span className="text-[9px] text-slate-400 font-bold w-10 text-center">{Math.round(scale * 100)}%</span>
+                    <button onClick={() => setScale(s => Math.min(s+0.1, 3))} className="p-1 text-slate-400 hover:text-white transition-all"><ZoomIn size={14} /></button>
                  </div>
                )}
-               <button onClick={() => setIsPresentationMode(true)} className="p-2 text-gray-500 hover:text-white transition-all"><Maximize size={16}/></button>
-               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded ${isAIActive ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:text-white'} transition-all`}><Sparkles size={16} /></button>
+               <button onClick={() => setIsPresentationMode(true)} className="p-2 text-slate-400 hover:text-white transition-all"><Maximize size={16}/></button>
+               <button onClick={() => setIsAIActive(!isAIActive)} className={`p-2 rounded-lg transition-all ${isAIActive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-700/50 text-slate-400 border border-white/5 hover:text-white'}`}><Sparkles size={16} /></button>
             </div>
           </div>
         )}
 
-        <div ref={containerRef} className={`flex-1 overflow-hidden relative bg-[#111] flex flex-col`}>
+        <div ref={containerRef} className={`flex-1 overflow-hidden relative flex flex-col`} style={{ background: 'radial-gradient(circle at center, #1e293b 0%, #0f172a 100%)' }}>
             {isLoading && !loadError && !useNativeViewer && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#111]/80 backdrop-blur-sm transition-opacity duration-300">
-                    <div className="relative">
-                      <div className="w-16 h-16 border-4 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin"></div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                         <div className="w-8 h-8 bg-indigo-600/20 rounded-lg animate-pulse"></div>
-                      </div>
-                    </div>
-                    <p className="mt-6 text-[11px] text-indigo-400 font-black uppercase tracking-[0.3em] animate-pulse">Đang nạp dữ liệu...</p>
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/50 backdrop-blur-xl">
+                    <div className="w-12 h-12 border-4 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin"></div>
+                    <p className="mt-5 text-[9px] text-indigo-400 font-black uppercase tracking-[0.4em] animate-pulse">Đang nạp...</p>
                 </div>
             )}
 
@@ -307,63 +297,41 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                     <div className="relative group flex justify-center w-full">
                         <img 
                           src={source} 
-                          className={`shadow-[0_40px_100px_rgba(0,0,0,0.8)] transition-all duration-700 ease-in-out bg-white transform origin-top ${isLoading ? 'opacity-0 scale-95 blur-md' : 'opacity-100 scale-100 blur-0'}`} 
+                          className={`shadow-[0_40px_100px_rgba(0,0,0,0.8)] transition-all duration-1000 ease-in-out bg-white transform origin-top ${isLoading ? 'opacity-0 scale-95 blur-2xl' : 'opacity-100 scale-100 blur-0'}`} 
                           style={{ width: `${bookWidth * scale}px`, maxWidth: 'none' }}
                           onLoad={() => setIsLoading(false)}
                           alt="Trang sách hình"
                         />
                     </div>
                 ) : (isAudioUrl && !useNativeViewer) ? (
-                    <div className="w-full max-w-2xl bg-[#222] rounded-[3rem] p-12 border border-white/5 shadow-2xl flex flex-col items-center gap-8 animate-slide-up mt-12">
-                        <div className="w-48 h-48 bg-indigo-600/10 rounded-[2.5rem] flex items-center justify-center text-indigo-500 border border-indigo-500/20 shadow-inner">
-                            <div className="relative">
-                                <Headphones size={80} className="animate-pulse" />
-                                <div className="absolute -top-4 -right-4 w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl">
-                                    <Music size={24} />
-                                </div>
-                            </div>
+                    <div className="w-full max-w-xl bg-slate-800/90 rounded-[3rem] p-12 border border-white/10 shadow-[0_30px_80px_rgba(0,0,0,0.5)] flex flex-col items-center gap-8 animate-slide-up mt-8 backdrop-blur-2xl">
+                        <div className="w-40 h-40 bg-indigo-600/10 rounded-[2rem] flex items-center justify-center text-indigo-500 border border-indigo-500/20 shadow-inner group overflow-hidden">
+                            <Headphones size={80} className="animate-pulse" />
                         </div>
                         <div className="text-center space-y-2">
-                            <h2 className="text-2xl font-black text-white tracking-tight">{flattenedReadingList[currentIndex]?.title || book.title}</h2>
-                            <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[10px]">{book.author}</p>
+                            <h2 className="text-2xl font-black text-white tracking-tight leading-tight">{flattenedReadingList[currentIndex]?.title || book.title}</h2>
+                            <p className="text-indigo-400 font-black uppercase tracking-[0.3em] text-[9px] opacity-70">{book.author}</p>
                         </div>
                         
-                        <div className="w-full bg-[#151515] p-6 rounded-[2rem] border border-white/5 group relative">
+                        <div className="w-full bg-slate-950/50 p-6 rounded-3xl border border-white/5">
                             <audio 
                                 controls 
                                 className="w-full h-10 accent-indigo-500" 
                                 src={source}
                                 onCanPlay={() => setIsLoading(false)}
-                                onError={() => {
-                                    setLoadError("File nhạc quá nặng hoặc bị giới hạn. Hãy bật 'Chế độ Gốc'.");
-                                    setIsLoading(false);
-                                }}
                                 autoPlay
                             >
-                                Trình duyệt của bạn không hỗ trợ phát âm thanh.
+                                Audio element is not supported.
                             </audio>
                         </div>
 
-                        {loadError && (
-                            <div className="bg-red-900/20 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-400 text-xs animate-slide-up">
-                                <AlertCircle size={16} />
-                                <span>{loadError}</span>
-                                <button onClick={() => setUseNativeViewer(true)} className="ml-auto underline font-bold uppercase tracking-tighter hover:text-red-300 transition-colors">Bật Chế độ Gốc</button>
-                            </div>
-                        )}
-
-                        <div className="flex gap-4 w-full">
-                            <button onClick={handlePrev} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài trước</button>
-                            <button onClick={handleNext} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Bài sau</button>
+                        <div className="flex gap-3 w-full">
+                            <button onClick={handlePrev} className="flex-1 bg-slate-700/50 hover:bg-slate-700 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95">Bài trước</button>
+                            <button onClick={handleNext} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20 active:scale-95">Bài sau</button>
                         </div>
                     </div>
                 ) : useNativeViewer ? (
-                    <div className="w-full h-full flex flex-col bg-black overflow-hidden">
-                        {/* 
-                          CRITICAL: Để iframe của Google Drive cuộn được, nó cần height 100% 
-                          và cha nó không được để overflow-hidden nếu không có height xác định.
-                          Dùng flex-1 để nó chiếm trọn chiều cao màn hình.
-                        */}
+                    <div className="w-full h-full flex flex-col bg-slate-950 overflow-hidden">
                         <iframe 
                           src={iframeUrl} 
                           className="w-full flex-1 border-0"
@@ -386,8 +354,8 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
             </div>
 
             {isPresentationMode && (
-                 <button onClick={() => setIsPresentationMode(false)} className="fixed top-6 right-6 p-3 bg-gray-900 text-white rounded-full border border-gray-700 z-50 hover:bg-red-600 transition-all shadow-2xl">
-                    <X size={20} />
+                 <button onClick={() => setIsPresentationMode(false)} className="fixed top-6 right-6 p-3 bg-slate-900/90 text-white rounded-full border border-white/10 z-50 hover:bg-rose-600 transition-all shadow-2xl backdrop-blur-xl group">
+                    <X size={20} className="group-hover:rotate-90 transition-transform" />
                  </button>
             )}
         </div>
