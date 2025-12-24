@@ -5,7 +5,7 @@ import BookReader from './components/BookReader';
 import Library from './components/Library';
 import AdminDashboard from './components/AdminDashboard';
 import AdminLogin from './components/AdminLogin';
-import { ShieldCheck, User, LogOut, Loader2, AlertTriangle, Users, Key } from 'lucide-react';
+import { ShieldCheck, User, LogOut, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 
 const App: React.FC = () => {
@@ -19,20 +19,12 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'library' | 'reader' | 'admin'>('library');
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-  // Mặc định coi như đã có nếu không có window.aistudio, ngược lại thì check
-  const [hasApiKey, setHasApiKey] = useState(true);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     fetchData();
     handleVisitorCounter();
     
-    // Kiểm tra trạng thái API Key từ môi trường aistudio
-    if (window.aistudio) {
-        window.aistudio.hasSelectedApiKey().then(setHasApiKey);
-    }
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -87,18 +79,6 @@ const App: React.FC = () => {
     } catch (error: any) { setConnectionError(error.message); } finally { setIsLoading(false); }
   };
 
-  const handleOpenKeySelector = async () => {
-      if (window.aistudio) {
-          try {
-              await window.aistudio.openSelectKey();
-              // Sau khi kích hoạt dialog, tạm thời coi như đã có để UI mượt mà
-              setHasApiKey(true);
-          } catch (e) {
-              console.error("Lỗi khi mở trình chọn Key", e);
-          }
-      }
-  };
-
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#020617] text-slate-100 font-sans flex flex-col">
       {currentView !== 'reader' && (
@@ -111,14 +91,6 @@ const App: React.FC = () => {
                 <span className="text-indigo-400">E-Book</span>
             </div>
             <div className="flex gap-1.5">
-                {!hasApiKey && window.aistudio && (
-                    <button 
-                        onClick={handleOpenKeySelector}
-                        className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-white transition-all mr-2 shadow-lg shadow-amber-500/5 animate-pulse"
-                    >
-                        <Key size={14} /> <span>Chọn API Key</span>
-                    </button>
-                )}
                 <button onClick={() => setCurrentView('library')} className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${currentView === 'library' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>Người đọc</button>
                 <button onClick={() => setCurrentView('admin')} className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${currentView === 'admin' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
                    <ShieldCheck size={14} /> <span>Quản trị</span>
@@ -136,11 +108,6 @@ const App: React.FC = () => {
                     <button onClick={() => { setSelectedBook(null); setCurrentView('library'); }} className="bg-slate-900/60 hover:bg-slate-800 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl group">
                     <LogOut size={12} className="group-hover:-translate-x-1 transition-transform" /> Quay lại
                     </button>
-                    {!hasApiKey && window.aistudio && (
-                        <button onClick={handleOpenKeySelector} className="bg-amber-600/90 hover:bg-amber-600 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl">
-                            <Key size={12} /> Cấu hình AI
-                        </button>
-                    )}
                 </div>
                 <BookReader book={selectedBook} />
             </div>
