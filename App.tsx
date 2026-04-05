@@ -58,7 +58,7 @@ const App: React.FC = () => {
       setCategories((catData || []).map((c: any) => ({ id: c.id, name: c.name, description: c.description, parentId: c.parent_id })));
 
       const { data: bookData } = await supabase.from('books').select(`*, chapters (id, title, page_number, url, parent_id)`).order('upload_date', { ascending: false });
-      setBooks((bookData || []).map((b: any) => ({
+      const fetchedBooks = (bookData || []).map((b: any) => ({
         id: b.id,
         title: b.title,
         author: b.author,
@@ -75,7 +75,19 @@ const App: React.FC = () => {
           url: ch.url,
           parentId: ch.parent_id 
         })).sort((a: any, b: any) => a.pageNumber - b.pageNumber)
-      })));
+      }));
+      setBooks(fetchedBooks);
+
+      // Deep linking logic: Check for bookId in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const bookIdFromUrl = urlParams.get('bookId');
+      if (bookIdFromUrl) {
+        const bookToOpen = fetchedBooks.find(b => b.id === bookIdFromUrl && b.isVisible);
+        if (bookToOpen) {
+          setSelectedBook(bookToOpen);
+          setCurrentView('reader');
+        }
+      }
     } catch (error: any) { setConnectionError(error.message); } finally { setIsLoading(false); }
   };
 
@@ -101,11 +113,23 @@ const App: React.FC = () => {
       )}
       <main className="flex-1 overflow-hidden relative flex flex-col">
         {currentView === 'admin' && ( <div className="h-full overflow-y-auto custom-scrollbar">{session ? <AdminDashboard books={books} setBooks={setBooks} categories={categories} setCategories={setCategories} onRefresh={fetchData} /> : <AdminLogin />}</div> )}
-        {currentView === 'library' && ( <div className="h-full overflow-y-auto custom-scrollbar pb-12"><Library books={books.filter(b => b.isVisible)} categories={categories} onSelectBook={b => { setSelectedBook(b); setCurrentView('reader'); }} /></div> )}
+        {currentView === 'library' && ( <div className="h-full overflow-y-auto custom-scrollbar pb-12"><Library books={books.filter(b => b.isVisible)} categories={categories} onSelectBook={b => { 
+          setSelectedBook(b); 
+          setCurrentView('reader');
+          const url = new URL(window.location.href);
+          url.searchParams.set('bookId', b.id);
+          window.history.pushState({}, '', url.toString());
+        }} /></div> )}
         {currentView === 'reader' && selectedBook && (
             <div className="h-full w-full relative">
                 <div className="absolute top-4 left-20 z-50 flex gap-2">
-                    <button onClick={() => { setSelectedBook(null); setCurrentView('library'); }} className="bg-slate-900/60 hover:bg-slate-800 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl group">
+                    <button onClick={() => { 
+                      setSelectedBook(null); 
+                      setCurrentView('library');
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete('bookId');
+                      window.history.pushState({}, '', url.toString());
+                    }} className="bg-slate-900/60 hover:bg-slate-800 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl group">
                     <LogOut size={12} className="group-hover:-translate-x-1 transition-transform" /> Quay lại
                     </button>
                 </div>
