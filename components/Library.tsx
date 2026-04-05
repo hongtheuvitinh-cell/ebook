@@ -127,8 +127,8 @@ const Library: React.FC<LibraryProps> = ({ books, categories, onSelectBook }) =>
                             
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/30 to-transparent z-10"></div>
                             
-                            <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-xl p-1.5 rounded-lg z-20 border border-white/10 shadow-xl scale-90 group-hover:scale-100 transition-transform duration-500 hover:bg-indigo-600 group/share" onClick={(e) => handleShare(e, book.id)} title="Chia sẻ liên kết">
-                                <Share2 size={12} className="text-slate-400 group-hover/share:text-white" />
+                            <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-xl p-2 rounded-lg z-20 border border-white/20 shadow-xl transition-all duration-300 hover:bg-indigo-600 group/share" onClick={(e) => handleShare(e, book.id)} title="Chia sẻ liên kết">
+                                <Share2 size={14} className="text-indigo-400 group-hover/share:text-white" />
                             </div>
 
                             <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-xl p-1.5 rounded-lg z-20 border border-white/10 shadow-xl scale-90 group-hover:scale-100 transition-transform duration-500">
