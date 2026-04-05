@@ -11,6 +11,7 @@ interface LibraryProps {
 
 const Library: React.FC<LibraryProps> = ({ books, categories, onSelectBook }) => {
   const [currentCategoryId, setCurrentCategoryId] = useState<string | null>(null);
+  const [copiedBookId, setCopiedBookId] = useState<string | null>(null);
 
   const currentCategory = useMemo(() => 
     categories.find(c => c.id === currentCategoryId), 
@@ -35,17 +36,16 @@ const Library: React.FC<LibraryProps> = ({ books, categories, onSelectBook }) =>
   }, [currentCategory, categories]);
 
   const handleShare = (e: React.MouseEvent, bookId: string) => {
+    e.preventDefault();
     e.stopPropagation();
+    
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('bookId', bookId);
-    navigator.clipboard.writeText(url.toString());
-    // Simple feedback
-    const btn = e.currentTarget as HTMLElement;
-    const originalContent = btn.innerHTML;
-    btn.innerHTML = '<span class="text-[8px] font-bold text-indigo-400">Copied!</span>';
-    setTimeout(() => {
-      btn.innerHTML = originalContent;
-    }, 2000);
+    
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopiedBookId(bookId);
+      setTimeout(() => setCopiedBookId(null), 2000);
+    });
   };
 
   return (
@@ -127,9 +127,20 @@ const Library: React.FC<LibraryProps> = ({ books, categories, onSelectBook }) =>
                             
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/30 to-transparent z-10"></div>
                             
-                            <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-xl p-2 rounded-lg z-20 border border-white/20 shadow-xl transition-all duration-300 hover:bg-indigo-600 group/share" onClick={(e) => handleShare(e, book.id)} title="Chia sẻ liên kết">
-                                <Share2 size={14} className="text-indigo-400 group-hover/share:text-white" />
-                            </div>
+                            <button 
+                                onClick={(e) => handleShare(e, book.id)} 
+                                className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-xl p-2 rounded-lg z-30 border border-white/20 shadow-xl transition-all duration-300 hover:bg-indigo-600 group/share flex items-center gap-2"
+                                title="Chia sẻ liên kết"
+                            >
+                                {copiedBookId === book.id ? (
+                                    <span className="text-[10px] font-bold text-white animate-pulse">Đã chép!</span>
+                                ) : (
+                                    <>
+                                        <Share2 size={14} className="text-indigo-400 group-hover/share:text-white" />
+                                        <span className="max-w-0 overflow-hidden group-hover/share:max-w-[50px] transition-all duration-500 text-[10px] font-bold text-white whitespace-nowrap">Copy</span>
+                                    </>
+                                )}
+                            </button>
 
                             <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-xl p-1.5 rounded-lg z-20 border border-white/10 shadow-xl scale-90 group-hover:scale-100 transition-transform duration-500">
                                 {book.contentType === 'audio' ? <Headphones size={12} className="text-indigo-400" /> : book.contentType === 'image' ? <ImageIcon size={12} className="text-emerald-400" /> : <BookOpen size={12} className="text-rose-400" />}
