@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from '
 import { Document } from 'react-pdf';
 import { 
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
-  Maximize, X, Menu, Loader2,
+  Maximize, X, Menu, Loader2, Share2,
   ChevronDown, ChevronRight as ChevronRightIcon, FileText, FolderOpen, Book as BookIcon,
   Monitor, Headphones, Music
 } from 'lucide-react';
@@ -132,6 +132,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   // Tự động nhận diện Google Drive để khởi tạo chế độ xem
   const [useNativeViewer, setUseNativeViewer] = useState(() => checkIsDrive(book.url));
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [isSharing, setIsSharing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
@@ -239,6 +240,14 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
       return getDirectUrl(originalUrl, true);
   }, [currentIndex, book.url, flattenedReadingList]);
 
+  const handleShare = () => {
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('bookId', book.id);
+    navigator.clipboard.writeText(url.toString());
+    setIsSharing(true);
+    setTimeout(() => setIsSharing(false), 2000);
+  };
+
   return (
     <div className={`flex h-full w-full ${isPresentationMode ? 'bg-black' : 'bg-slate-950'}`}>
       {!isPresentationMode && (
@@ -293,6 +302,13 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                  </div>
                )}
                <button onClick={() => setIsPresentationMode(true)} className="p-2 text-slate-400 hover:text-white transition-all"><Maximize size={16}/></button>
+               <div className="h-4 w-px bg-white/5 mx-1"></div>
+               <button 
+                onClick={handleShare} 
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${isSharing ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-slate-700/50 text-indigo-400 border border-white/5 hover:text-white hover:bg-indigo-600'}`}
+               >
+                  <Share2 size={12} /> {isSharing ? 'Đã chép!' : 'Chia sẻ'}
+               </button>
             </div>
           </div>
         )}
