@@ -135,6 +135,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const [isSharing, setIsSharing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const initialLoadRef = useRef(false);
   const [containerSize, setContainerSize] = useState<{width: number, height: number} | null>(null);
 
   const isImageUrl = useMemo(() => {
@@ -195,7 +196,34 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
     } else {
         setPageNumber(node.pageNumber || 1);
     }
+
+    // Cập nhật URL với chapterId mới
+    const url = new URL(window.location.href);
+    if (node.id && node.id !== 'default') {
+      url.searchParams.set('chapterId', node.id);
+    } else {
+      url.searchParams.delete('chapterId');
+    }
+    window.history.pushState({}, '', url.toString());
   }, [flattenedReadingList, book.url, source]);
+
+  // Tự động nhảy đến bài/chương được chỉ định qua URL khi khởi động
+  useEffect(() => {
+    if (initialLoadRef.current) return;
+    if (flattenedReadingList.length > 0) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const chapterIdFromUrl = urlParams.get('chapterId');
+      if (chapterIdFromUrl) {
+        const matchedNode = flattenedReadingList.find(item => item.id === chapterIdFromUrl);
+        if (matchedNode) {
+          handleSelectNode(matchedNode);
+          initialLoadRef.current = true;
+        }
+      } else {
+        initialLoadRef.current = true;
+      }
+    }
+  }, [flattenedReadingList, handleSelectNode]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -243,6 +271,12 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
   const handleShare = () => {
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('bookId', book.id);
+    
+    const activeChapter = flattenedReadingList[currentIndex];
+    if (activeChapter && activeChapter.id && activeChapter.id !== 'default') {
+      url.searchParams.set('chapterId', activeChapter.id);
+    }
+    
     navigator.clipboard.writeText(url.toString());
     setIsSharing(true);
     setTimeout(() => setIsSharing(false), 2000);
@@ -305,6 +339,7 @@ const BookReader: React.FC<BookReaderProps> = ({ book }) => {
                <div className="h-4 w-px bg-white/5 mx-1"></div>
                <button 
                 onClick={handleShare} 
+                title="Chia sẻ liên kết"
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${isSharing ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-slate-700/50 text-indigo-400 border border-white/5 hover:text-white hover:bg-indigo-600'}`}
                >
                   <Share2 size={12} /> {isSharing ? 'Đã chép!' : 'Chia sẻ'}
