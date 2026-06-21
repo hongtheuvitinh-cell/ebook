@@ -128,6 +128,7 @@ const App: React.FC = () => {
                       setCurrentView('library');
                       const url = new URL(window.location.href);
                       url.searchParams.delete('bookId');
+                      url.searchParams.delete('chapterId');
                       window.history.pushState({}, '', url.toString());
                     }} className="bg-slate-900/60 hover:bg-slate-800 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 flex items-center gap-2 transition-all shadow-xl group">
                     <LogOut size={12} className="group-hover:-translate-x-1 transition-transform" /> Quay lại
